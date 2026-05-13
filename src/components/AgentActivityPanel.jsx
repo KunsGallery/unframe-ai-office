@@ -23,12 +23,24 @@ export default function AgentActivityPanel({
         const statusClass = STATUS_CLASS_MAP[status] || STATUS_CLASS_MAP.idle;
         const isMoving = Boolean(visualState.isMoving);
         const message = visualState.message;
-        const activityLabel =
-          status === "returning"
-            ? meta.label
-            : isMoving
-              ? "이동 중"
-              : meta.label;
+        const mode = visualState.mode || "base";
+        let activityLabel = meta.label;
+
+        if (mode === "collaboration" && isMoving) {
+          activityLabel = "회의실 이동 중";
+        } else if (mode === "collaboration") {
+          activityLabel = "협업 중";
+        } else if (mode === "coordination" && isMoving) {
+          activityLabel = "팀 호출 중";
+        } else if (mode === "coordination") {
+          activityLabel = "회의실로 모이는 중";
+        } else if (status === "returning" || mode === "returning") {
+          activityLabel = "자리로 돌아가는 중";
+        } else if (isMoving) {
+          activityLabel = "이동 중";
+        } else if (mode === "roaming") {
+          activityLabel = "다른 자리 확인 중";
+        }
 
         return (
           <div key={agent.id} className={`activity-row ${statusClass}`}>

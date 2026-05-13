@@ -2933,6 +2933,81 @@ button {
   z-index: 0;
 }
 
+.meeting-room-object {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 2px solid #17213a;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(246, 244, 238, 0.96)),
+    rgba(246, 244, 238, 0.92);
+  box-shadow: 4px 4px 0 rgba(23, 33, 58, 0.18);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.meeting-room-label {
+  position: absolute;
+  top: -18px;
+  left: 8px;
+  padding: 3px 6px;
+  border: 2px solid #17213a;
+  background: #17213a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 3px 3px 0 rgba(23, 33, 58, 0.12);
+}
+
+.meeting-room-door {
+  position: absolute;
+  left: -2px;
+  top: 44%;
+  width: 14%;
+  height: 18%;
+  border: 2px solid #17213a;
+  border-left: 0;
+  background: linear-gradient(180deg, #f2e6d8, #dbc9b6);
+}
+
+.meeting-table {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52%;
+  height: 34%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #17213a;
+  background: linear-gradient(180deg, #e9dcc8, #d7c2a9);
+}
+
+.meeting-chair {
+  position: absolute;
+  width: 16%;
+  height: 12%;
+  border: 2px solid #17213a;
+  background: linear-gradient(180deg, #b3c0d0, #798aa0);
+}
+
+.meeting-chair.chair-1 {
+  left: 18%;
+  top: 26%;
+}
+
+.meeting-chair.chair-2 {
+  right: 18%;
+  top: 26%;
+}
+
+.meeting-chair.chair-3 {
+  left: 18%;
+  bottom: 18%;
+}
+
+.meeting-chair.chair-4 {
+  right: 18%;
+  bottom: 18%;
+}
+
 .pixel-grid {
   position: absolute;
   inset: 0;
@@ -3086,10 +3161,7 @@ button {
   gap: 6px;
   text-align: center;
   touch-action: manipulation;
-  transition:
-    left 0.75s ease-in-out,
-    top 0.75s ease-in-out,
-    filter 0.2s ease;
+  transition: filter 0.12s linear;
   z-index: 6;
 }
 
@@ -3424,6 +3496,11 @@ button {
 
   .agent-desk-object {
     width: 68px;
+  }
+
+  .meeting-room-object {
+    width: 22% !important;
+    height: 25% !important;
   }
 
   .desk-surface {

@@ -1,6 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { AGENT_STATUSES } from "../data/agentStatuses";
-import { AGENT_LAYOUT, OFFICE_OBJECTS } from "../data/pixelOfficeLayout";
+import {
+  AGENT_LAYOUT,
+  MEETING_ROOM,
+  OFFICE_OBJECTS,
+} from "../data/pixelOfficeLayout";
 import { useAgentMotion } from "../hooks/useAgentMotion";
 import AgentActivityPanel from "./AgentActivityPanel";
 import OfficeAgent from "./OfficeAgent";
@@ -174,11 +178,7 @@ export default function OfficeMap({
             : motionState.isMoving
               ? motionState.status || baseStatus
               : baseStatus,
-        message:
-          motionState.mode === "collaboration" ||
-          motionState.mode === "returning"
-            ? motionState.message || ""
-            : "",
+        message: motionState.message || "",
       };
 
       return accumulator;
@@ -207,10 +207,7 @@ export default function OfficeMap({
         isAgentAwayFromDesk(nearestInteractionTarget.agent.id, agentPositions)
       ) {
         sendAgentToDesk(nearestInteractionTarget.agent.id, {
-          status: "returning",
-          message: "곧 갈게요",
-          mode: "returning",
-          speed: 18,
+          reason: "user-request",
           onArriveStatus: "talking",
           onArriveMessage: "",
           onArriveMode: "base",
@@ -276,6 +273,25 @@ export default function OfficeMap({
             <div className="pixel-grid" />
 
             <div className="pixel-floor-content">
+              <div
+                className="meeting-room-object"
+                style={{
+                  left: `${MEETING_ROOM.x}%`,
+                  top: `${MEETING_ROOM.y}%`,
+                  width: `${MEETING_ROOM.width}%`,
+                  height: `${MEETING_ROOM.height}%`,
+                }}
+                aria-hidden="true"
+              >
+                <div className="meeting-room-label">{MEETING_ROOM.label}</div>
+                <div className="meeting-room-door" />
+                <div className="meeting-table" />
+                <div className="meeting-chair chair-1" />
+                <div className="meeting-chair chair-2" />
+                <div className="meeting-chair chair-3" />
+                <div className="meeting-chair chair-4" />
+              </div>
+
               <div className="pixel-map-status">
                 <span>현재 선택</span>
                 <strong>{activeAgent.name}</strong>

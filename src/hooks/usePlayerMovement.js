@@ -13,11 +13,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function normalizeKey(key) {
-  return typeof key === "string" ? key.toLowerCase() : "";
-}
-
-function isEditableTarget(target) {
+function isTextInputTarget(target) {
   const tagName = target?.tagName?.toLowerCase();
 
   return (
@@ -37,23 +33,48 @@ function hasMovementKey(keys) {
   return false;
 }
 
-function getMovementDirectionFromKeyboardEvent(event) {
-  const key = normalizeKey(event.key);
+function getDirectionFromEvent(event) {
+  const key = event.key;
+  const lowerKey = typeof key === "string" ? key.toLowerCase() : "";
   const code = event.code;
 
-  if (code === "ArrowUp" || code === "KeyW" || key === "arrowup" || key === "w" || key === "ㅈ") {
+  if (
+    code === "ArrowUp" ||
+    key === "ArrowUp" ||
+    code === "KeyW" ||
+    lowerKey === "w" ||
+    key === "ㅈ"
+  ) {
     return "up";
   }
 
-  if (code === "ArrowLeft" || code === "KeyA" || key === "arrowleft" || key === "a" || key === "ㅁ") {
+  if (
+    code === "ArrowLeft" ||
+    key === "ArrowLeft" ||
+    code === "KeyA" ||
+    lowerKey === "a" ||
+    key === "ㅁ"
+  ) {
     return "left";
   }
 
-  if (code === "ArrowDown" || code === "KeyS" || key === "arrowdown" || key === "s" || key === "ㄴ") {
+  if (
+    code === "ArrowDown" ||
+    key === "ArrowDown" ||
+    code === "KeyS" ||
+    lowerKey === "s" ||
+    key === "ㄴ"
+  ) {
     return "down";
   }
 
-  if (code === "ArrowRight" || code === "KeyD" || key === "arrowright" || key === "d" || key === "ㅇ") {
+  if (
+    code === "ArrowRight" ||
+    key === "ArrowRight" ||
+    code === "KeyD" ||
+    lowerKey === "d" ||
+    key === "ㅇ"
+  ) {
     return "right";
   }
 
@@ -61,7 +82,11 @@ function getMovementDirectionFromKeyboardEvent(event) {
 }
 
 function isShiftEvent(event) {
-  return event.code === "ShiftLeft" || event.code === "ShiftRight" || normalizeKey(event.key) === "shift";
+  return (
+    event.code === "ShiftLeft" ||
+    event.code === "ShiftRight" ||
+    event.key === "Shift"
+  );
 }
 
 export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
@@ -89,7 +114,7 @@ export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
     }
 
     function step(timestamp) {
-      if (isEditableTarget(document.activeElement)) {
+      if (isTextInputTarget(document.activeElement)) {
         stopMovement();
         return;
       }
@@ -158,7 +183,7 @@ export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
     }
 
     function handleKeyDown(event) {
-      if (event.isComposing || isEditableTarget(event.target)) {
+      if (event.isComposing || isTextInputTarget(event.target)) {
         return;
       }
 
@@ -172,7 +197,7 @@ export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
         return;
       }
 
-      const direction = getMovementDirectionFromKeyboardEvent(event);
+      const direction = getDirectionFromEvent(event);
 
       if (!direction) {
         return;
@@ -188,7 +213,7 @@ export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
         keysRef.current.delete("shift");
       }
 
-      const direction = getMovementDirectionFromKeyboardEvent(event);
+      const direction = getDirectionFromEvent(event);
 
       if (direction) {
         keysRef.current.delete(direction);
@@ -208,11 +233,13 @@ export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", stopMovement);
+    window.addEventListener("compositionstart", stopMovement);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", stopMovement);
+      window.removeEventListener("compositionstart", stopMovement);
       stopMovement();
     };
   }, []);

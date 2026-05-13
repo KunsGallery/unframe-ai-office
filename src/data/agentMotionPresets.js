@@ -1,36 +1,59 @@
 export const MOTION_POINTS = {
   desks: {
-    director: { x: 50, y: 45 },
-    copy: { x: 25, y: 45 },
-    design: { x: 75, y: 45 },
-    music: { x: 25, y: 79 },
-    admin: { x: 50, y: 79 },
-    archive: { x: 75, y: 79 },
+    director: { x: 46, y: 44 },
+    copy: { x: 24, y: 44 },
+    design: { x: 68, y: 44 },
+    music: { x: 24, y: 78 },
+    admin: { x: 46, y: 78 },
+    archive: { x: 68, y: 78 },
   },
   collaborationTable: {
     center: { x: 50, y: 56 },
     left: { x: 42, y: 56 },
     right: { x: 58, y: 56 },
-    topLeft: { x: 45, y: 51 },
-    topRight: { x: 55, y: 51 },
-    bottomLeft: { x: 45, y: 61 },
-    bottomRight: { x: 55, y: 61 },
+  },
+  hallway: {
+    topLeft: { x: 18, y: 24 },
+    topCenter: { x: 50, y: 24 },
+    topRight: { x: 82, y: 24 },
+    middleLeft: { x: 14, y: 56 },
+    middleRight: { x: 86, y: 56 },
+    bottomLeft: { x: 18, y: 90 },
+    bottomCenter: { x: 50, y: 90 },
+    bottomRight: { x: 82, y: 90 },
   },
   lounge: {
-    left: { x: 17, y: 55 },
-    right: { x: 83, y: 55 },
+    plantLeft: { x: 10, y: 82 },
+    plantRight: { x: 90, y: 82 },
+    bookshelf: { x: 82, y: 18 },
+    water: { x: 52, y: 20 },
   },
 };
 
+export const AGENT_VISIT_ROUTES = {
+  director: ["copy", "design", "admin"],
+  copy: ["director", "archive", "design"],
+  design: ["copy", "director", "music"],
+  music: ["admin", "archive", "copy"],
+  admin: ["director", "music", "archive"],
+  archive: ["copy", "admin", "design"],
+};
+
 export const AGENT_BEHAVIOR_PRESETS = {
-  idleWander: {
+  officeRoaming: {
     enabled: true,
-    intervalMs: 9000,
-    radius: 6,
-    lingerMs: 2200,
+    intervalMs: 12000,
+    minStayMs: 5500,
+    maxStayMs: 14000,
+    moveProbability: 0.72,
+    visitOtherDeskProbability: 0.42,
+    hallwayProbability: 0.28,
+    loungeProbability: 0.18,
+    returnHomeProbability: 0.12,
+    maxAgentsPerTick: 2,
   },
   collaboration: {
-    durationMs: 8000,
-    bubbleIntervalMs: 2200,
+    durationMs: 9000,
+    bubbleIntervalMs: 2400,
   },
 };
