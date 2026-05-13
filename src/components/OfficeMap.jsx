@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { AGENT_STATUSES } from "../data/agentStatuses";
 import {
   AGENT_LAYOUT,
@@ -6,7 +6,6 @@ import {
   OFFICE_OBJECTS,
 } from "../data/pixelOfficeLayout";
 import { useAgentMotion } from "../hooks/useAgentMotion";
-import AgentTaskQueue from "./AgentTaskQueue";
 import AgentActivityPanel from "./AgentActivityPanel";
 import OfficeAgent from "./OfficeAgent";
 import PlayerAvatar from "./PlayerAvatar";
@@ -136,6 +135,7 @@ export default function OfficeMap({
   onSelectAgent,
   user,
   room,
+  onMotionApiReady,
 }) {
   const activeAgent =
     agents.find((agent) => agent.id === activeAgentId) || agents[0];
@@ -146,6 +146,7 @@ export default function OfficeMap({
     agentPositions,
     agentVisualStates,
     triggerCollaboration,
+    endCollaboration,
     sendAgentToDesk,
     sendAgentToPoint,
   } = useAgentMotion({
@@ -192,7 +193,7 @@ export default function OfficeMap({
     }, {});
   }, [activeAgentId, agentVisualStates, agents, nearestCharacterId]);
 
-  const handleTaskRunStart = (taskItem) => {
+  const handleTaskRunStart = useCallback((taskItem) => {
     const involvedAgentIds = Array.from(
       new Set(["director", taskItem?.assignedAgentId].filter(Boolean)),
     );
@@ -211,21 +212,53 @@ export default function OfficeMap({
       onArriveMessage: "작업 정리 중",
       onArriveMode: "task",
     });
-  };
+  }, [sendAgentToPoint, triggerCollaboration]);
 
-  const handleTaskRunEnd = (taskItem) => {
-    if (!taskItem?.assignedAgentId) {
+  const handleTaskRunEnd = useCallback((taskItem) => {
+    const involvedAgentIds = Array.from(
+      new Set(["director", taskItem?.assignedAgentId].filter(Boolean)),
+    );
+
+    if (!involvedAgentIds.length) {
       return;
     }
 
-    sendAgentToDesk(taskItem.assignedAgentId, {
+    if (involvedAgentIds.length > 1) {
+      endCollaboration(involvedAgentIds);
+      return;
+    }
+
+    sendAgentToDesk(involvedAgentIds[0], {
       reason: "collaboration-end",
       onArriveStatus:
-        taskItem.assignedAgentId === activeAgentId ? "talking" : "idle",
+        involvedAgentIds[0] === activeAgentId ? "talking" : "idle",
       onArriveMessage: "",
       onArriveMode: "base",
     });
-  };
+  }, [activeAgentId, endCollaboration, sendAgentToDesk]);
+
+  useEffect(() => {
+    onMotionApiReady?.({
+      triggerCollaboration,
+      sendAgentToDesk,
+      sendAgentToPoint,
+      handleTaskRunStart,
+      handleTaskRunEnd,
+    });
+  }, [
+    handleTaskRunEnd,
+    handleTaskRunStart,
+    onMotionApiReady,
+    sendAgentToDesk,
+    sendAgentToPoint,
+    triggerCollaboration,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      onMotionApiReady?.(null);
+    };
+  }, [onMotionApiReady]);
 
   useEffect(() => {
     function handleKeyDown(event) {
@@ -289,185 +322,169 @@ export default function OfficeMap({
         </div>
       </div>
 
-      <div className="office-map-and-tasks">
-        <div className="office-map-main">
-          <div className="pixel-office-frame">
-            <div className="pixel-office-map">
-              <div className="pixel-top-wall">
-                <div className="pixel-window window-1" />
-                <div className="pixel-window window-2" />
-                <div className="pixel-window window-3" />
-              </div>
-
-              <div className="pixel-object-layer" aria-hidden="true">
-                {OFFICE_OBJECTS.map((object) => (
-                  <div
-                    key={object.id}
-                    className={`pixel-object object-${object.type} object-${object.id}`}
-                    style={{
-                      left: `${object.x}%`,
-                      top: `${object.y}%`,
-                      width: object.width ? `${object.width}%` : undefined,
-                    }}
-                  >
-                    {object.label ? (
-                      <span className="pixel-object-label">{object.label}</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-
-              <div className="pixel-map-floor">
-                <div className="pixel-grid" />
-
-                <div className="pixel-floor-content">
-                  <div
-                    className="meeting-room-object"
-                    style={{
-                      left: `${MEETING_ROOM.x}%`,
-                      top: `${MEETING_ROOM.y}%`,
-                      width: `${MEETING_ROOM.width}%`,
-                      height: `${MEETING_ROOM.height}%`,
-                    }}
-                    aria-hidden="true"
-                  >
-                    <div className="meeting-room-label">
-                      {MEETING_ROOM.label}
-                    </div>
-                    <div className="meeting-room-door" />
-                    <div className="meeting-table" />
-                    <div className="meeting-chair chair-1" />
-                    <div className="meeting-chair chair-2" />
-                    <div className="meeting-chair chair-3" />
-                    <div className="meeting-chair chair-4" />
-                  </div>
-
-                  <div className="pixel-map-status">
-                    <span>현재 선택</span>
-                    <strong>{activeAgent.name}</strong>
-                    <em>{activeStatus.label}</em>
-                  </div>
-
-                  {agents.map((agent) => {
-                    const layout = AGENT_LAYOUT[agent.id];
-
-                    if (!layout) {
-                      return null;
-                    }
-
-                    return (
-                      <div
-                        key={`${agent.id}-desk`}
-                        className={`agent-desk-object row-${layout.row}`}
-                        style={{
-                          left: `${layout.deskX}%`,
-                          top: `${layout.deskY}%`,
-                          "--desk-accent":
-                            agent.character?.accentColor || agent.color,
-                        }}
-                      >
-                        <div className="desk-label">{agent.name}</div>
-                        <div className="desk-surface">
-                          <div className="desk-computer" />
-                          <div className="desk-keyboard" />
-                        </div>
-                        <div className="desk-chair" />
-                      </div>
-                    );
-                  })}
-
-                  {DEBUG_HIT_AREAS &&
-                    agents.map((agent) => {
-                      const baseLayout = AGENT_LAYOUT[agent.id];
-                      const layout =
-                        agentPositions[agent.id] ||
-                        getAgentSeatPosition(baseLayout);
-                      const hitRadius = baseLayout?.hitRadius || 9;
-
-                      if (!layout) {
-                        return null;
-                      }
-
-                      return (
-                        <div
-                          key={`${agent.id}-hit`}
-                          className="pixel-hit-area"
-                          style={{
-                            left: `${layout.x}%`,
-                            top: `${layout.y}%`,
-                            width: `${hitRadius * 2}%`,
-                            height: `${hitRadius * 2}%`,
-                          }}
-                        />
-                      );
-                    })}
-
-                  {agents.map((agent) => {
-                    const layout =
-                      agentPositions[agent.id] ||
-                      getAgentSeatPosition(AGENT_LAYOUT[agent.id]);
-                    const visualState = visualStates[agent.id];
-
-                    if (!layout) {
-                      return null;
-                    }
-
-                    return (
-                      <OfficeAgent
-                        key={agent.id}
-                        agent={agent}
-                        position={layout}
-                        status={
-                          visualState?.status ||
-                          getAgentVisualStatus(
-                            agent.id,
-                            activeAgentId,
-                            nearestCharacterId,
-                          )
-                        }
-                        message={visualState?.message}
-                        isMoving={visualState?.isMoving}
-                        mode={visualState?.mode}
-                        isActive={agent.id === activeAgentId}
-                        isNearby={nearestCharacterId === agent.id}
-                        debugPosition={DEBUG_AGENT_MOTION ? layout : null}
-                        onClick={() => onSelectAgent(agent.id)}
-                      />
-                    );
-                  })}
-
-                  <PlayerAvatar
-                    user={user}
-                    position={position}
-                    isMoving={isMoving}
-                    isNearAgent={Boolean(nearestInteractionTarget)}
-                    nearestAgentName={nearestInteractionTarget?.agent?.name}
-                  />
-                </div>
-              </div>
-            </div>
+      <div className="pixel-office-frame">
+        <div className="pixel-office-map">
+          <div className="pixel-top-wall">
+            <div className="pixel-window window-1" />
+            <div className="pixel-window window-2" />
+            <div className="pixel-window window-3" />
           </div>
 
-          <AgentActivityPanel
-            agents={agents}
-            agentVisualStates={visualStates}
-            activeAgentId={activeAgentId}
-            nearestAgentId={nearestInteractionAgentId}
-          />
-        </div>
+          <div className="pixel-object-layer" aria-hidden="true">
+            {OFFICE_OBJECTS.map((object) => (
+              <div
+                key={object.id}
+                className={`pixel-object object-${object.type} object-${object.id}`}
+                style={{
+                  left: `${object.x}%`,
+                  top: `${object.y}%`,
+                  width: object.width ? `${object.width}%` : undefined,
+                }}
+              >
+                {object.label ? (
+                  <span className="pixel-object-label">{object.label}</span>
+                ) : null}
+              </div>
+            ))}
+          </div>
 
-        <aside className="task-queue-sidebar">
-          <AgentTaskQueue
-            room={room}
-            user={user}
-            agents={agents}
-            triggerCollaboration={triggerCollaboration}
-            onTaskRunStart={handleTaskRunStart}
-            onTaskRunComplete={handleTaskRunEnd}
-            onTaskRunError={handleTaskRunEnd}
-          />
-        </aside>
+          <div className="pixel-map-floor">
+            <div className="pixel-grid" />
+
+            <div className="pixel-floor-content">
+              <div
+                className="meeting-room-object"
+                style={{
+                  left: `${MEETING_ROOM.x}%`,
+                  top: `${MEETING_ROOM.y}%`,
+                  width: `${MEETING_ROOM.width}%`,
+                  height: `${MEETING_ROOM.height}%`,
+                }}
+                aria-hidden="true"
+              >
+                <div className="meeting-room-label">
+                  {MEETING_ROOM.label}
+                </div>
+                <div className="meeting-room-door" />
+                <div className="meeting-table" />
+                <div className="meeting-chair chair-1" />
+                <div className="meeting-chair chair-2" />
+                <div className="meeting-chair chair-3" />
+                <div className="meeting-chair chair-4" />
+              </div>
+
+              <div className="pixel-map-status">
+                <span>현재 선택</span>
+                <strong>{activeAgent.name}</strong>
+                <em>{activeStatus.label}</em>
+              </div>
+
+              {agents.map((agent) => {
+                const layout = AGENT_LAYOUT[agent.id];
+
+                if (!layout) {
+                  return null;
+                }
+
+                return (
+                  <div
+                    key={`${agent.id}-desk`}
+                    className={`agent-desk-object row-${layout.row}`}
+                    style={{
+                      left: `${layout.deskX}%`,
+                      top: `${layout.deskY}%`,
+                      "--desk-accent":
+                        agent.character?.accentColor || agent.color,
+                    }}
+                  >
+                    <div className="desk-label">{agent.name}</div>
+                    <div className="desk-surface">
+                      <div className="desk-computer" />
+                      <div className="desk-keyboard" />
+                    </div>
+                    <div className="desk-chair" />
+                  </div>
+                );
+              })}
+
+              {DEBUG_HIT_AREAS &&
+                agents.map((agent) => {
+                  const baseLayout = AGENT_LAYOUT[agent.id];
+                  const layout =
+                    agentPositions[agent.id] ||
+                    getAgentSeatPosition(baseLayout);
+                  const hitRadius = baseLayout?.hitRadius || 9;
+
+                  if (!layout) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={`${agent.id}-hit`}
+                      className="pixel-hit-area"
+                      style={{
+                        left: `${layout.x}%`,
+                        top: `${layout.y}%`,
+                        width: `${hitRadius * 2}%`,
+                        height: `${hitRadius * 2}%`,
+                      }}
+                    />
+                  );
+                })}
+
+              {agents.map((agent) => {
+                const layout =
+                  agentPositions[agent.id] ||
+                  getAgentSeatPosition(AGENT_LAYOUT[agent.id]);
+                const visualState = visualStates[agent.id];
+
+                if (!layout) {
+                  return null;
+                }
+
+                return (
+                  <OfficeAgent
+                    key={agent.id}
+                    agent={agent}
+                    position={layout}
+                    status={
+                      visualState?.status ||
+                      getAgentVisualStatus(
+                        agent.id,
+                        activeAgentId,
+                        nearestCharacterId,
+                      )
+                    }
+                    message={visualState?.message}
+                    isMoving={visualState?.isMoving}
+                    mode={visualState?.mode}
+                    isActive={agent.id === activeAgentId}
+                    isNearby={nearestCharacterId === agent.id}
+                    debugPosition={DEBUG_AGENT_MOTION ? layout : null}
+                    onClick={() => onSelectAgent(agent.id)}
+                  />
+                );
+              })}
+
+              <PlayerAvatar
+                user={user}
+                position={position}
+                isMoving={isMoving}
+                isNearAgent={Boolean(nearestInteractionTarget)}
+                nearestAgentName={nearestInteractionTarget?.agent?.name}
+              />
+            </div>
+          </div>
+        </div>
       </div>
+
+      <AgentActivityPanel
+        agents={agents}
+        agentVisualStates={visualStates}
+        activeAgentId={activeAgentId}
+        nearestAgentId={nearestInteractionAgentId}
+      />
 
       {import.meta.env.DEV ? (
         <button

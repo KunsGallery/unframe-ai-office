@@ -16,11 +16,15 @@ const ROAMING_BUBBLES = [
   "메모 확인",
   "아이디어 공유 중",
 ];
-const COLLAB_INVITE_BUBBLES = [
-  "같이 볼까요?",
-  "회의실로 모일게요",
-  "잠깐 논의해요",
+const COLLABORATION_PROTECTED_MODES = [
+  "collaboration-moving",
+  "collaboration-ready",
+  "collaboration",
+  "coordination",
+  "returning",
+  "task",
 ];
+const DEFAULT_MOVE_TIMEOUT_MS = 6000;
 
 const POSITION_LIMITS = {
   minX: 8,
@@ -322,6 +326,8 @@ export function useAgentMotion({
         clearMessageAfterMs = 0,
       } = targetEntry;
 
+      clearAgentTimers(agentId);
+
       const finalMessage =
         onArriveMessage !== undefined
           ? onArriveMessage
@@ -340,7 +346,7 @@ export function useAgentMotion({
       scheduleMessageClear(agentId, onArriveMode, clearMessageAfterMs);
       onArrive?.();
     },
-    [scheduleMessageClear, updateAgentVisualState],
+    [clearAgentTimers, scheduleMessageClear, updateAgentVisualState],
   );
 
   const startAnimationLoop = useCallback(() => {
@@ -376,6 +382,11 @@ export function useAgentMotion({
 
         targetIds.forEach((agentId) => {
           const targetEntry = targets[agentId];
+
+          if (!targetEntry?.target) {
+            return;
+          }
+
           const currentPosition = next[agentId] || targetEntry.target;
           const dx = targetEntry.target.x - currentPosition.x;
           const dy = targetEntry.target.y - currentPosition.y;
@@ -439,80 +450,171 @@ export function useAgentMotion({
     collaborationTokenRef.current = null;
   }, []);
 
+  const restoreAgentsToBaseState = useCallback(
+    (agentIds = []) => {
+      agentIds.forEach((agentId) => {
+        const agent = agentLookup[agentId];
+        const currentState = visualStatesRef.current[agentId] || {};
+
+        if (!agent) {
+          return;
+        }
+
+        if (
+          currentState.isMoving ||
+          !COLLABORATION_PROTECTED_MODES.includes(currentState.mode)
+        ) {
+          return;
+        }
+
+        updateAgentVisualState(agentId, {
+          status: getBaseStatus(agent, activeAgentId),
+          message: "",
+          isMoving: false,
+          mode: "base",
+          messageIndex: 0,
+        });
+      });
+    },
+    [activeAgentId, agentLookup, updateAgentVisualState],
+  );
+
   const sendAgentToPoint = useCallback(
     (agentId, point, options = {}) => {
-      if (!agentId || !point) {
-        return;
-      }
+      return new Promise((resolve) => {
+        if (!agentId || !point) {
+          resolve(false);
+          return;
+        }
 
-      const targetPoint = clampPoint(point);
-      const currentPosition =
-        positionsRef.current[agentId] ||
-        deskPositions[agentId] ||
-        targetPoint;
+        const targetPoint = clampPoint(point);
+        const currentPosition =
+          positionsRef.current[agentId] ||
+          deskPositions[agentId] ||
+          targetPoint;
 
-      const {
-        speed = DEFAULT_MOVE_SPEED,
-        status,
-        message,
-        mode = "base",
-        onArriveStatus,
-        onArriveMessage,
-        onArriveMode = "base",
-        onArrive,
-        stayMs = 0,
-        clearMessageAfterMs = 0,
-        immediate = false,
-      } = options;
+        const {
+          speed = DEFAULT_MOVE_SPEED,
+          status,
+          message,
+          mode = "base",
+          onArriveStatus,
+          onArriveMessage,
+          onArriveMode = "base",
+          onArrive,
+          stayMs = 0,
+          clearMessageAfterMs = 0,
+          immediate = false,
+          timeoutMs = DEFAULT_MOVE_TIMEOUT_MS,
+        } = options;
 
-      clearAgentTimers(agentId);
-      roamAvailableAtRef.current[agentId] = Date.now() + stayMs;
+        const existingTarget = agentTargetsRef.current[agentId];
+        if (existingTarget?.resolve) {
+          existingTarget.resolve(false);
+        }
 
-      if (reduceMotionRef.current || immediate) {
-        const nextPositions = {
-          ...positionsRef.current,
-          [agentId]: targetPoint,
+        let settled = false;
+        const settle = (success) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          resolve(success);
         };
 
-        positionsRef.current = nextPositions;
-        setAgentPositions(nextPositions);
-        finishMovement({
+        const wrappedOnArrive = () => {
+          onArrive?.();
+          settle(true);
+        };
+
+        clearAgentTimers(agentId);
+        roamAvailableAtRef.current[agentId] = Date.now() + stayMs;
+
+        if (reduceMotionRef.current || immediate) {
+          const nextPositions = {
+            ...positionsRef.current,
+            [agentId]: targetPoint,
+          };
+
+          positionsRef.current = nextPositions;
+          setAgentPositions(nextPositions);
+          finishMovement({
+            agentId,
+            onArrive: wrappedOnArrive,
+            onArriveStatus: onArriveStatus || status,
+            onArriveMessage:
+              onArriveMessage !== undefined ? onArriveMessage : message,
+            onArriveMode,
+            clearMessageAfterMs,
+          });
+          return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+          const activeTarget = agentTargetsRef.current[agentId];
+
+          if (activeTarget?.target !== targetPoint) {
+            settle(false);
+            return;
+          }
+
+          delete agentTargetsRef.current[agentId];
+
+          const nextPositions = {
+            ...positionsRef.current,
+            [agentId]: targetPoint,
+          };
+
+          positionsRef.current = nextPositions;
+          setAgentPositions(nextPositions);
+          updateAgentVisualState(agentId, {
+            status: onArriveStatus || status || "idle",
+            message:
+              onArriveMessage !== undefined
+                ? onArriveMessage
+                : message || "",
+            isMoving: false,
+            mode: onArriveMode || "base",
+          });
+
+          if (import.meta.env.DEV) {
+            console.debug("[move timeout]", agentId, targetPoint);
+          }
+
+          settle(false);
+        }, timeoutMs);
+
+        registerAgentTimer(agentId, timeoutId);
+
+        updateAgentVisualState(agentId, (previous) => ({
+          status: status || previous.status || "idle",
+          message: message !== undefined ? message : previous.message || "",
+          isMoving: true,
+          mode,
+        }));
+
+        agentTargetsRef.current[agentId] = {
           agentId,
-          onArrive,
-          onArriveStatus: onArriveStatus || status,
-          onArriveMessage:
-            onArriveMessage !== undefined ? onArriveMessage : message,
+          target: targetPoint,
+          speed,
+          onArrive: wrappedOnArrive,
+          onArriveStatus,
+          onArriveMessage,
           onArriveMode,
           clearMessageAfterMs,
-        });
-        return;
-      }
+          startedFrom: currentPosition,
+          resolve: settle,
+        };
 
-      updateAgentVisualState(agentId, (previous) => ({
-        status: status || previous.status || "idle",
-        message: message !== undefined ? message : previous.message || "",
-        isMoving: true,
-        mode,
-      }));
-
-      agentTargetsRef.current[agentId] = {
-        agentId,
-        target: targetPoint,
-        speed,
-        onArrive,
-        onArriveStatus,
-        onArriveMessage,
-        onArriveMode,
-        clearMessageAfterMs,
-        startedFrom: currentPosition,
-      };
-
-      startAnimationLoop();
+        startAnimationLoop();
+      });
     },
     [
       clearAgentTimers,
       deskPositions,
       finishMovement,
+      registerAgentTimer,
       startAnimationLoop,
       updateAgentVisualState,
     ],
@@ -523,14 +625,14 @@ export function useAgentMotion({
       const deskPoint = deskPositions[agentId];
 
       if (!deskPoint) {
-        return;
+        return Promise.resolve(false);
       }
 
       const reason = options.reason || "auto";
       const agent = agentLookup[agentId];
       const baseStatus = agent ? getBaseStatus(agent, activeAgentId) : "idle";
 
-      sendAgentToPoint(agentId, deskPoint, {
+      return sendAgentToPoint(agentId, deskPoint, {
         speed:
           options.speed ||
           (reason === "user-request"
@@ -647,108 +749,104 @@ export function useAgentMotion({
         waitFor(ms, (timerId) => registerCollaborationHandle(timerId));
 
       void (async () => {
-        const leadAgentId = safeAgentIds[0];
-        const collaboratorIds = safeAgentIds.slice(1);
-
-        collaboratorIds.forEach((agentId) => {
-          updateAgentVisualState(agentId, {
-            status: "thinking",
-            message: "",
-            isMoving: false,
-            mode: "coordination",
-          });
-        });
-
-        for (const collaboratorId of collaboratorIds) {
-          if (!isActiveSequence()) {
-            return;
-          }
-
-          const collaboratorDesk = deskPositions[collaboratorId];
-
-          if (collaboratorDesk) {
-            const invitePoint = withOffset(collaboratorDesk, 3, 2, 1);
-            const inviteBubble =
-              pickRandom(COLLAB_INVITE_BUBBLES) || "회의실로 모일게요";
-
-            sendAgentToPoint(leadAgentId, invitePoint, {
-              status: "working",
-              message: inviteBubble,
-              mode: "coordination",
-              speed: 14,
-              onArriveStatus: "working",
-              onArriveMessage: inviteBubble,
-              onArriveMode: "coordination",
-              clearMessageAfterMs: 1700,
-            });
-
-            updateAgentVisualState(collaboratorId, {
-              status: "thinking",
-              message: "회의실에서 볼게요",
-              isMoving: false,
-              mode: "coordination",
-            });
-
-            await wait(randomIntBetween(1300, 1700));
-          }
-        }
-
         if (!isActiveSequence()) {
           return;
         }
 
-        safeAgentIds.forEach((agentId, index) => {
+        if (import.meta.env.DEV) {
+          console.debug("[collaboration start]", safeAgentIds, topic);
+          console.debug("[meeting seats]", MEETING_ROOM.seats);
+        }
+
+        const meetingMoves = safeAgentIds.map((agentId, index) => {
           const seatPoint = getMeetingSeat(index);
-          const collaborationMessages = getCollaborationMessages(agentId, topic);
-          const isLead = index === 0;
 
-          sendAgentToPoint(agentId, seatPoint, {
-            status: isLead ? "talking" : "working",
-            message: isLead ? "회의실에서 정리할게요" : "회의실 이동 중",
-            mode: "collaboration",
+          if (import.meta.env.DEV) {
+            console.debug("[move to meeting]", agentId, seatPoint);
+          }
+
+          return sendAgentToPoint(agentId, seatPoint, {
+            status: "idle",
+            message: "회의실 이동 중",
+            mode: "collaboration-moving",
             speed: 16,
-            onArriveStatus: isLead ? "talking" : "working",
-            onArriveMessage: isLead ? collaborationMessages[0] : "",
-            onArriveMode: "collaboration",
+            timeoutMs: 6000,
+            onArriveStatus: "thinking",
+            onArriveMessage: "",
+            onArriveMode: "collaboration-ready",
           });
         });
 
-        await wait(randomIntBetween(1700, 2200));
+        const meetingResults = await Promise.allSettled(meetingMoves);
 
         if (!isActiveSequence()) {
           return;
         }
+
+        if (import.meta.env.DEV) {
+          console.debug("[meeting move settled]", meetingResults);
+        }
+
+        safeAgentIds.forEach((agentId) => {
+          updateAgentVisualState(agentId, (previous) => ({
+            ...previous,
+            isMoving: false,
+            status: previous.status || "thinking",
+            message: "",
+            mode:
+              previous.mode === "collaboration-ready"
+                ? "collaboration-ready"
+                : "collaboration-ready",
+          }));
+        });
+
+        let speakerIndex = 0;
 
         safeAgentIds.forEach((agentId, index) => {
           const messages = getCollaborationMessages(agentId, topic);
-          const statusCycle = ["talking", "working", "thinking"];
-          const initialStatus = statusCycle[index % statusCycle.length];
 
           updateAgentVisualState(agentId, {
-            status: initialStatus,
-            message: messages[0],
+            status: index === 0 ? "talking" : "thinking",
+            message: index === 0 ? messages[0] : "",
             isMoving: false,
             mode: "collaboration",
-            messageIndex: 0,
+            messageIndex: index === 0 ? 1 : 0,
           });
+        });
 
-          const intervalId = window.setInterval(() => {
-            updateAgentVisualState(agentId, (previous) => {
-              const nextIndex = ((previous.messageIndex || 0) + 1) % messages.length;
-              const nextStatus = statusCycle[nextIndex % statusCycle.length];
+        const brainstormInterval = window.setInterval(() => {
+          const currentSpeakerId =
+            safeAgentIds[speakerIndex % safeAgentIds.length];
 
-              return {
-                status: nextStatus,
-                message: messages[nextIndex],
+          safeAgentIds.forEach((agentId) => {
+            const messages = getCollaborationMessages(agentId, topic);
+
+            if (agentId === currentSpeakerId) {
+              const currentMessageIndex =
+                visualStatesRef.current[agentId]?.messageIndex || 0;
+
+              updateAgentVisualState(agentId, {
+                status: "talking",
+                message: messages[currentMessageIndex % messages.length],
                 isMoving: false,
                 mode: "collaboration",
-                messageIndex: nextIndex,
-              };
-            });
-          }, AGENT_BEHAVIOR_PRESETS.collaboration.bubbleIntervalMs);
+                messageIndex: currentMessageIndex + 1,
+              });
+              return;
+            }
 
-          registerCollaborationHandle(intervalId, "interval");
-        });
+            updateAgentVisualState(agentId, {
+              status: "thinking",
+              message: "",
+              isMoving: false,
+              mode: "collaboration",
+            });
+          });
+
+          speakerIndex += 1;
+        }, 2200);
+
+        registerCollaborationHandle(brainstormInterval, "interval");
 
         await wait(
           randomIntBetween(
@@ -763,25 +861,55 @@ export function useAgentMotion({
 
         clearCollaboration();
 
-        safeAgentIds.forEach((agentId) => {
-          sendAgentToDesk(agentId, {
-            reason: "collaboration-end",
-            onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
-            onArriveMessage: "",
-            onArriveMode: "base",
-          });
-        });
+        await Promise.allSettled(
+          safeAgentIds.map((agentId) =>
+            sendAgentToDesk(agentId, {
+              reason: "collaboration-end",
+              onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
+              onArriveMessage: "",
+              onArriveMode: "base",
+            }),
+          ),
+        );
+
+        restoreAgentsToBaseState(safeAgentIds);
+
+        if (import.meta.env.DEV) {
+          console.debug("[collaboration end]", safeAgentIds);
+        }
       })();
     },
     [
       activeAgentId,
       clearCollaboration,
-      deskPositions,
       registerCollaborationHandle,
+      restoreAgentsToBaseState,
       sendAgentToDesk,
       sendAgentToPoint,
       updateAgentVisualState,
     ],
+  );
+
+  const endCollaboration = useCallback(
+    (agentIds = []) => {
+      const safeAgentIds = Array.from(new Set(agentIds.filter(Boolean)));
+
+      clearCollaboration();
+
+      return Promise.allSettled(
+        safeAgentIds.map((agentId) =>
+          sendAgentToDesk(agentId, {
+            reason: "collaboration-end",
+            onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
+            onArriveMessage: "",
+            onArriveMode: "base",
+          }),
+        ),
+      ).finally(() => {
+        restoreAgentsToBaseState(safeAgentIds);
+      });
+    },
+    [activeAgentId, clearCollaboration, restoreAgentsToBaseState, sendAgentToDesk],
   );
 
   useEffect(() => {
@@ -824,26 +952,19 @@ export function useAgentMotion({
       agents.forEach((agent) => {
         const currentState = next[agent.id] || {};
 
-        if (currentState.mode === "collaboration" || currentState.isMoving) {
+        if (
+          currentState.isMoving ||
+          COLLABORATION_PROTECTED_MODES.includes(currentState.mode)
+        ) {
           return;
         }
 
-        if (currentState.mode === "returning") {
-          next[agent.id] = {
-            ...currentState,
-            status: getBaseStatus(agent, activeAgentId),
-            message: "",
-            mode: "base",
-          };
-          return;
-        }
-
-        if (!currentState.status) {
-          next[agent.id] = {
-            ...currentState,
-            status: getBaseStatus(agent, activeAgentId),
-          };
-        }
+        next[agent.id] = {
+          ...currentState,
+          status: agent.id === activeAgentId ? "talking" : "idle",
+          message: "",
+          mode: "base",
+        };
       });
 
       visualStatesRef.current = next;
@@ -865,12 +986,15 @@ export function useAgentMotion({
       const eligibleAgents = agents.filter((agent) => {
         const currentState = visualStatesRef.current[agent.id];
         const nextAvailableAt = roamAvailableAtRef.current[agent.id] || 0;
+        const isRoamingEligible =
+          !currentState?.mode ||
+          currentState.mode === "base" ||
+          currentState.mode === "roaming";
 
         return (
           agent.id !== activeAgentId &&
           !currentState?.isMoving &&
-          currentState?.mode !== "collaboration" &&
-          currentState?.mode !== "returning" &&
+          isRoamingEligible &&
           now >= nextAvailableAt
         );
       });
@@ -933,8 +1057,15 @@ export function useAgentMotion({
     }
 
     const activeAgent = agentLookup[activeAgentId];
+    const activeAgentState = visualStatesRef.current[activeAgentId];
 
-    if (!activeAgent) {
+    if (
+      !activeAgent ||
+      activeAgentState?.isMoving ||
+      COLLABORATION_PROTECTED_MODES.includes(
+        activeAgentState?.mode,
+      )
+    ) {
       return;
     }
 
@@ -954,11 +1085,13 @@ export function useAgentMotion({
       clearCollaboration();
 
       Object.values(agentTargets).forEach((targetEntry) => {
+        targetEntry.resolve?.(false);
         targetEntry.onArrive = null;
       });
 
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
 
       timerMap.forEach((timerIds) => {
@@ -974,6 +1107,7 @@ export function useAgentMotion({
     agentPositions,
     agentVisualStates,
     triggerCollaboration,
+    endCollaboration,
     sendAgentToDesk,
     sendAgentToPoint,
   };

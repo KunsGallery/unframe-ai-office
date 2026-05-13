@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TASK_STATUSES } from "../data/taskTypes";
 import {
   archiveTask,
@@ -6,6 +6,7 @@ import {
   saveTasksFromPlan,
   updateTask,
 } from "../lib/taskQueue";
+import { saveOutput } from "../lib/outputArchive";
 import { canSendMessage, incrementLocalUsage } from "../lib/usageLimit";
 import GoalComposer from "./GoalComposer";
 import TaskCard from "./TaskCard";
@@ -52,6 +53,11 @@ export default function AgentTaskQueue({
   const [errorMessage, setErrorMessage] = useState("");
   const [noticeMessage, setNoticeMessage] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const isMountedRef = useRef(false);
+  const tasksRef = useRef([]);
+  const syncTasksRef = useRef(async () => []);
+  const roomId = room?.id || "";
+  const userEmail = user?.email || "";
 
   const agentMap = useMemo(() => {
     return agents.reduce((accumulator, agent) => {
@@ -61,33 +67,94 @@ export default function AgentTaskQueue({
   }, [agents]);
 
   useEffect(() => {
-    let isCancelled = false;
-
-    async function hydrateTasks() {
-      setIsHydrating(true);
-      setErrorMessage("");
-
-      const loadedTasks = await loadTasks({
-        roomId: room?.id,
-        userEmail: user?.email,
-      });
-
-      if (!isCancelled) {
-        setTasks(loadedTasks);
-        setIsHydrating(false);
-      }
-    }
-
-    hydrateTasks();
+    isMountedRef.current = true;
 
     return () => {
-      isCancelled = true;
+      isMountedRef.current = false;
     };
-  }, [room?.id, user?.email]);
+  }, []);
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    syncTasksRef.current = async (
+      nextRoomId,
+      nextUserEmail,
+      { showHydrating = false } = {},
+    ) => {
+      if (!nextRoomId || !nextUserEmail) {
+        if (isMountedRef.current) {
+          setTasks([]);
+          setRunningTaskId(null);
+          setIsHydrating(false);
+        }
+        return [];
+      }
+
+      if (showHydrating && isMountedRef.current) {
+        setIsHydrating(true);
+        setErrorMessage("");
+      }
+
+      try {
+        const loadedTasks = await loadTasks({
+          roomId: nextRoomId,
+          userEmail: nextUserEmail,
+        });
+
+        if (isMountedRef.current) {
+          setTasks(loadedTasks);
+          setRunningTaskId(
+            loadedTasks.find((task) => task.status === "running")?.id || null,
+          );
+          setIsHydrating(false);
+        }
+
+        return loadedTasks;
+      } catch (error) {
+        console.error("Failed to hydrate tasks", error);
+
+        if (isMountedRef.current) {
+          setIsHydrating(false);
+          setErrorMessage("저장된 작업을 불러오지 못했습니다.");
+        }
+
+        return tasksRef.current;
+      }
+    };
+  });
+
+  useEffect(() => {
+    const hydrateTimer = window.setTimeout(() => {
+      void syncTasksRef.current(roomId, userEmail, { showHydrating: true });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(hydrateTimer);
+    };
+  }, [roomId, userEmail]);
 
   const visibleTasks = useMemo(() => {
     return tasks.filter((task) => task.status !== "archived");
   }, [tasks]);
+
+  useEffect(() => {
+    const hasRunningTask = tasks.some((task) => task.status === "running");
+
+    if (!hasRunningTask || !roomId || !userEmail) {
+      return undefined;
+    }
+
+    const syncTimer = window.setInterval(() => {
+      void syncTasksRef.current(roomId, userEmail);
+    }, 2000);
+
+    return () => {
+      window.clearInterval(syncTimer);
+    };
+  }, [roomId, tasks, userEmail]);
 
   const handleCreatePlan = async (goal) => {
     if (!user?.email || !room?.id || isPlanning) {
@@ -140,8 +207,11 @@ export default function AgentTaskQueue({
       });
 
       incrementLocalUsage(user.email);
-      setTasks((previous) => [...savedTasks, ...previous]);
-      setNoticeMessage(data.summary || "새 작업 계획이 저장되었습니다.");
+
+      if (isMountedRef.current) {
+        setTasks((previous) => [...savedTasks, ...previous]);
+        setNoticeMessage(data.summary || "새 작업 계획이 저장되었습니다.");
+      }
 
       const involvedAgentIds = Array.from(
         new Set(
@@ -156,10 +226,16 @@ export default function AgentTaskQueue({
       }
     } catch (error) {
       console.error("Failed to create plan", error);
-      setErrorMessage(error.message || "작업 계획을 만들지 못했습니다.");
+
+      if (isMountedRef.current) {
+        setErrorMessage(error.message || "작업 계획을 만들지 못했습니다.");
+      }
     } finally {
       onPlanningEnd?.();
-      setIsPlanning(false);
+
+      if (isMountedRef.current) {
+        setIsPlanning(false);
+      }
     }
   };
 
@@ -173,23 +249,9 @@ export default function AgentTaskQueue({
       return;
     }
 
-    setRunningTaskId(taskItem.id);
-    setErrorMessage("");
-    setNoticeMessage("");
-    onTaskRunStart?.(taskItem);
-    setTasks((previous) =>
-      previous.map((task) =>
-        task.id === taskItem.id
-          ? {
-              ...task,
-              status: "running",
-              errorMessage: "",
-            }
-          : task,
-      ),
-    );
-
     try {
+      const startedAtIso = new Date().toISOString();
+
       await updateTask({
         roomId: room.id,
         userEmail: user.email,
@@ -197,10 +259,39 @@ export default function AgentTaskQueue({
         updates: {
           status: "running",
           errorMessage: "",
-          executedAt: new Date().toISOString(),
+          executedAt: startedAtIso,
           mode: "economy",
         },
       });
+
+      const runningTask = {
+        ...taskItem,
+        status: "running",
+        errorMessage: "",
+        executedAt: startedAtIso,
+        mode: "economy",
+      };
+
+      if (isMountedRef.current) {
+        setRunningTaskId(taskItem.id);
+        setErrorMessage("");
+        setNoticeMessage("");
+        setTasks((previous) =>
+          previous.map((task) =>
+            task.id === taskItem.id
+              ? {
+                  ...task,
+                  status: "running",
+                  errorMessage: "",
+                  executedAt: startedAtIso,
+                  mode: "economy",
+                }
+              : task,
+          ),
+        );
+      }
+
+      onTaskRunStart?.(runningTask);
 
       const response = await fetch("/.netlify/functions/ai-chat", {
         method: "POST",
@@ -219,8 +310,8 @@ export default function AgentTaskQueue({
           },
           roomId: room.id,
           roomName: room.name,
-          memorySummary: buildMemorySummary(tasks, room),
-          recentMessages: getRecentContextTasks(tasks),
+          memorySummary: buildMemorySummary(tasksRef.current, room),
+          recentMessages: getRecentContextTasks(tasksRef.current),
           userEmail: user.email,
           mode: "economy",
         }),
@@ -234,6 +325,16 @@ export default function AgentTaskQueue({
 
       incrementLocalUsage(user.email);
       const completedAtIso = new Date().toISOString();
+      const completedTask = {
+        ...taskItem,
+        status: "completed",
+        result: data.result,
+        usage: data.usage ?? null,
+        errorMessage: "",
+        completedAt: completedAtIso,
+        executedAt: completedAtIso,
+        mode: "economy",
+      };
 
       await updateTask({
         roomId: room.id,
@@ -250,26 +351,28 @@ export default function AgentTaskQueue({
         },
       });
 
-      setTasks((previous) =>
-        previous.map((task) =>
-          task.id === taskItem.id
-            ? {
-                ...task,
-                status: "completed",
-                result: data.result,
-                usage: data.usage ?? null,
-                errorMessage: "",
-                completedAt: completedAtIso,
-                executedAt: completedAtIso,
-                mode: "economy",
-              }
-            : task,
-        ),
-      );
-      setNoticeMessage(`${taskItem.title} 작업 결과가 저장되었습니다.`);
-      onTaskRunComplete?.(taskItem);
+      if (isMountedRef.current) {
+        setTasks((previous) =>
+          previous.map((task) =>
+            task.id === taskItem.id
+              ? {
+                  ...task,
+                  ...completedTask,
+                }
+              : task,
+          ),
+        );
+        setNoticeMessage(`${taskItem.title} 작업 결과가 저장되었습니다.`);
+      }
+
+      onTaskRunComplete?.(completedTask);
     } catch (error) {
       console.error("Failed to execute task", error);
+      const failedTask = {
+        ...taskItem,
+        status: "failed",
+        errorMessage: error.message || "작업 실행 중 오류가 발생했습니다.",
+      };
 
       try {
         await updateTask({
@@ -277,29 +380,36 @@ export default function AgentTaskQueue({
           userEmail: user.email,
           taskId: taskItem.id,
           updates: {
-            status: "failed",
-            errorMessage: error.message || "작업 실행 중 오류가 발생했습니다.",
+            status: failedTask.status,
+            errorMessage: failedTask.errorMessage,
           },
         });
       } catch (updateError) {
         console.error("Failed to persist task failure", updateError);
       }
 
-      setTasks((previous) =>
-        previous.map((task) =>
-          task.id === taskItem.id
-            ? {
-                ...task,
-                status: "failed",
-                errorMessage: error.message || "작업 실행 중 오류가 발생했습니다.",
-              }
-            : task,
-        ),
-      );
-      setErrorMessage(error.message || "작업 실행 중 오류가 발생했습니다.");
-      onTaskRunError?.(taskItem);
+      if (isMountedRef.current) {
+        setTasks((previous) =>
+          previous.map((task) =>
+            task.id === taskItem.id
+              ? {
+                  ...task,
+                  status: failedTask.status,
+                  errorMessage: failedTask.errorMessage,
+                }
+              : task,
+          ),
+        );
+        setErrorMessage(failedTask.errorMessage);
+      }
+
+      onTaskRunError?.(failedTask);
     } finally {
-      setRunningTaskId(null);
+      if (isMountedRef.current) {
+        setRunningTaskId(null);
+      }
+
+      void syncTasksRef.current(roomId, userEmail);
     }
   };
 
@@ -315,23 +425,94 @@ export default function AgentTaskQueue({
         taskId: taskItem.id,
       });
 
-      setTasks((previous) =>
-        previous.map((task) =>
-          task.id === taskItem.id ? { ...task, status: "archived" } : task,
-        ),
-      );
+      if (isMountedRef.current) {
+        setTasks((previous) =>
+          previous.map((task) =>
+            task.id === taskItem.id ? { ...task, status: "archived" } : task,
+          ),
+        );
+      }
     } catch (error) {
       console.error("Failed to archive task", error);
-      setErrorMessage("작업을 보관하지 못했습니다.");
+
+      if (isMountedRef.current) {
+        setErrorMessage("작업을 보관하지 못했습니다.");
+      }
+    }
+  };
+
+  const handleSaveTaskResult = async (taskItem, nextResult) => {
+    if (!taskItem?.id || !room?.id || !user?.email) {
+      return;
+    }
+
+    const trimmedResult = String(nextResult || "").trim();
+
+    if (!trimmedResult) {
+      throw new Error("저장할 결과가 없습니다.");
+    }
+
+    await updateTask({
+      roomId: room.id,
+      userEmail: user.email,
+      taskId: taskItem.id,
+      updates: {
+        status: "completed",
+        result: trimmedResult,
+        errorMessage: "",
+        completedAt: taskItem.completedAt || new Date().toISOString(),
+        executedAt: taskItem.executedAt || new Date().toISOString(),
+      },
+    });
+
+    if (isMountedRef.current) {
+      setTasks((previous) =>
+        previous.map((task) =>
+          task.id === taskItem.id
+            ? {
+                ...task,
+                status: "completed",
+                result: trimmedResult,
+                errorMessage: "",
+                completedAt: task.completedAt || taskItem.completedAt || new Date().toISOString(),
+                executedAt: task.executedAt || taskItem.executedAt || new Date().toISOString(),
+              }
+            : task,
+        ),
+      );
+      setNoticeMessage(`${taskItem.title} 수정본이 저장되었습니다.`);
+    }
+  };
+
+  const handleSaveOutput = async (taskItem, outputDraft) => {
+    if (!taskItem?.id || !room?.id || !user?.email) {
+      return;
+    }
+
+    await saveOutput({
+      roomId: room.id,
+      userEmail: user.email,
+      output: {
+        title: outputDraft.title,
+        type: outputDraft.type,
+        content: outputDraft.content,
+        sourceTaskId: taskItem.id,
+        sourceTaskTitle: taskItem.title || "",
+        assignedAgentId: taskItem.assignedAgentId || "director",
+      },
+    });
+
+    if (isMountedRef.current) {
+      setNoticeMessage(`${taskItem.title} 결과를 Output Archive에 저장했습니다.`);
     }
   };
 
   return (
-    <section className={`agent-task-queue ${isCollapsed ? "collapsed" : ""}`}>
+    <section className={`agent-task-queue compact ${isCollapsed ? "collapsed" : ""}`}>
       <div className="task-queue-header">
         <div>
-          <p className="task-queue-kicker">AI 업무 보드</p>
-          <h3>Agent Task Queue</h3>
+          <p className="task-queue-kicker">AGENT TASK QUEUE</p>
+          <h3>AI 업무 보드</h3>
         </div>
         <button
           type="button"
@@ -361,7 +542,9 @@ export default function AgentTaskQueue({
                   statusMeta={TASK_STATUSES[task.status] || TASK_STATUSES.planned}
                   onRun={handleRunTask}
                   onArchive={handleArchiveTask}
-                  isRunning={runningTaskId === task.id}
+                  onSaveResult={handleSaveTaskResult}
+                  onSaveOutput={handleSaveOutput}
+                  isRunning={runningTaskId === task.id || task.status === "running"}
                 />
               ))
             ) : (

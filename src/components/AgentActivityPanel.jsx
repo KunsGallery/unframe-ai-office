@@ -26,10 +26,12 @@ export default function AgentActivityPanel({
         const mode = visualState.mode || "base";
         let activityLabel = meta.label;
 
-        if (mode === "collaboration" && isMoving) {
+        if (mode === "collaboration-moving") {
           activityLabel = "회의실 이동 중";
+        } else if (mode === "collaboration-ready") {
+          activityLabel = "브레인스토밍 준비 중";
         } else if (mode === "collaboration") {
-          activityLabel = "협업 중";
+          activityLabel = "브레인스토밍 중";
         } else if (mode === "task" && isMoving) {
           activityLabel = "작업 위치로 이동 중";
         } else if (mode === "task") {

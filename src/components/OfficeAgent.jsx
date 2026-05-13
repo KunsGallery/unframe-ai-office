@@ -38,7 +38,11 @@ export default function OfficeAgent({
     Boolean(spriteMeta?.usesExternalAsset) &&
     Boolean(spriteAssetPath) &&
     failedSpritePath !== spriteAssetPath;
-  const bubbleText = message || statusMeta.bubble || "";
+  const bubbleText =
+    message ||
+    (isNearby ? "대화 가능" : "") ||
+    (isActive && status === "talking" ? "말하는 중" : "") ||
+    (status === "returning" ? "곧 갈게요" : "");
   const roleLabel = character.label || agent.role;
 
   return (

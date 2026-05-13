@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -56,17 +55,34 @@ export function getTaskQueueRef({ roomId = "general", userEmail }) {
   return getTaskQueueDoc({ roomId, userEmail });
 }
 
-export  async function loadTasks({ roomId = "general", userEmail }) {
+export async function loadTasks({ roomId = "general", userEmail }) {
   try {
     const tasksSnapshot = await getDocs(
       query(
         getTasksCollection({ roomId, userEmail }),
         where("userEmail", "==", userEmail || ""),
-        orderBy("updatedAt", "desc"),
       ),
     );
 
-    return tasksSnapshot.docs.map(mapTaskDoc);
+    return tasksSnapshot.docs
+      .map(mapTaskDoc)
+      .sort((a, b) => {
+        const aTime =
+          a.updatedAt?.toMillis?.() ||
+          a.updatedAt?.seconds * 1000 ||
+          a.createdAt?.toMillis?.() ||
+          a.createdAt?.seconds * 1000 ||
+          0;
+
+        const bTime =
+          b.updatedAt?.toMillis?.() ||
+          b.updatedAt?.seconds * 1000 ||
+          b.createdAt?.toMillis?.() ||
+          b.createdAt?.seconds * 1000 ||
+          0;
+
+        return bTime - aTime;
+      });
   } catch (error) {
     console.error("Failed to load tasks", error);
     return [];

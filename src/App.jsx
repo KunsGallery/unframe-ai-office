@@ -3,6 +3,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import { agents } from "./data/agents";
 import { rooms } from "./data/rooms";
+import AgentTaskQueue from "./components/AgentTaskQueue";
 import LoginScreen from "./components/LoginScreen";
 import ChatPanel from "./components/ChatPanel";
 import OfficeMap from "./components/OfficeMap";
@@ -22,6 +23,8 @@ export default function App() {
   const [activeAgentId, setActiveAgentId] = useState("director");
   const [activeRoomId, setActiveRoomId] = useState("general");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeSideTab, setActiveSideTab] = useState("chat");
+  const [motionApi, setMotionApi] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -89,20 +92,63 @@ export default function App() {
       />
 
       <section className="office-mode-layout">
-        <OfficeMap
-          agents={agents}
-          activeAgentId={activeAgentId}
-          onSelectAgent={setActiveAgentId}
-          user={user}
-          room={activeRoom}
-        />
-        <ChatPanel
-          key={`${activeRoomId}-${activeAgent.id}`}
-          agent={activeAgent}
-          user={user}
-          roomId={activeRoomId}
-          roomName={activeRoom.name}
-        />
+        <section className="office-main-area">
+          <OfficeMap
+            agents={agents}
+            activeAgentId={activeAgentId}
+            onSelectAgent={setActiveAgentId}
+            user={user}
+            room={activeRoom}
+            onMotionApiReady={setMotionApi}
+          />
+        </section>
+
+        <aside className="office-side-panel">
+          <div className="side-panel-tabs" role="tablist" aria-label="오른쪽 패널 탭">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSideTab === "chat"}
+              className={activeSideTab === "chat" ? "active" : ""}
+              onClick={() => setActiveSideTab("chat")}
+            >
+              채팅
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeSideTab === "tasks"}
+              className={activeSideTab === "tasks" ? "active" : ""}
+              onClick={() => setActiveSideTab("tasks")}
+            >
+              업무 보드
+            </button>
+          </div>
+
+          <div
+            className={`side-panel-content ${activeSideTab === "tasks" ? "tasks" : "chat"}`}
+          >
+            {activeSideTab === "chat" ? (
+              <ChatPanel
+                key={`${activeRoomId}-${activeAgent.id}`}
+                agent={activeAgent}
+                user={user}
+                roomId={activeRoomId}
+                roomName={activeRoom.name}
+              />
+            ) : (
+              <AgentTaskQueue
+                room={activeRoom}
+                user={user}
+                agents={agents}
+                triggerCollaboration={motionApi?.triggerCollaboration}
+                onTaskRunStart={motionApi?.handleTaskRunStart}
+                onTaskRunComplete={motionApi?.handleTaskRunEnd}
+                onTaskRunError={motionApi?.handleTaskRunEnd}
+              />
+            )}
+          </div>
+        </aside>
       </section>
 
       <SettingsPanel

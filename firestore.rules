@@ -127,6 +127,16 @@ service cloud.firestore {
         request.resource.data.userEmail == request.auth.token.email;
     }
 
+    function ownsExistingOutput() {
+      return resource.data.userEmail is string &&
+        resource.data.userEmail == request.auth.token.email;
+    }
+
+    function ownsIncomingOutput() {
+      return request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == request.auth.token.email;
+    }
+
     function isAllowedTaskAgent(agentId) {
       return agentId == "director" ||
         agentId == "copy" ||
@@ -148,6 +158,18 @@ service cloud.firestore {
       return priority == "low" ||
         priority == "normal" ||
         priority == "high";
+    }
+
+    function isAllowedOutputType(type) {
+      return type == "exhibition_text" ||
+        type == "instagram_copy" ||
+        type == "design_prompt" ||
+        type == "suno_prompt" ||
+        type == "email_draft" ||
+        type == "checklist" ||
+        type == "article_draft" ||
+        type == "interview_questions" ||
+        type == "general";
     }
 
     function isValidOptionalTaskTime(value) {
@@ -274,6 +296,55 @@ service cloud.firestore {
         isValidOptionalTaskTime(request.resource.data.get("completedAt", null));
     }
 
+    function isValidOutputData(roomId) {
+      return isAllowedRoom(roomId) &&
+        request.resource.data.keys().hasAll([
+          "title",
+          "type",
+          "content",
+          "sourceTaskId",
+          "sourceTaskTitle",
+          "assignedAgentId",
+          "roomId",
+          "userEmail",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "title",
+          "type",
+          "content",
+          "sourceTaskId",
+          "sourceTaskTitle",
+          "assignedAgentId",
+          "roomId",
+          "userEmail",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.type is string &&
+        isAllowedOutputType(request.resource.data.type) &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() > 0 &&
+        request.resource.data.content.size() <= 20000 &&
+        request.resource.data.sourceTaskId is string &&
+        request.resource.data.sourceTaskId.size() > 0 &&
+        request.resource.data.sourceTaskId.size() <= 120 &&
+        request.resource.data.sourceTaskTitle is string &&
+        request.resource.data.sourceTaskTitle.size() <= 160 &&
+        request.resource.data.assignedAgentId is string &&
+        isAllowedTaskAgent(request.resource.data.assignedAgentId) &&
+        request.resource.data.roomId is string &&
+        request.resource.data.roomId == roomId &&
+        request.resource.data.userEmail is string &&
+        isAllowedEmail(request.resource.data.userEmail) &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
     match /unframeChatRooms/{roomId} {
       allow read, write: if false;
 
@@ -350,6 +421,29 @@ service cloud.firestore {
 
           allow delete: if false;
         }
+      }
+    }
+
+    match /unframeOutputRooms/{roomId} {
+      allow read, write: if false;
+
+      match /outputs/{outputId} {
+        allow get: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsExistingOutput());
+
+        allow list: if isAllowedRoom(roomId) && isAllowedStaff();
+
+        allow create: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          ownsIncomingOutput() &&
+          isValidOutputData(roomId);
+
+        allow update: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsExistingOutput()) &&
+          (isOwner() || ownsIncomingOutput()) &&
+          isValidOutputData(roomId);
+
+        allow delete: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsExistingOutput());
       }
     }
 
