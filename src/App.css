@@ -208,13 +208,14 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.95fr);
   gap: 20px;
-  align-items: stretch;
+  align-items: start;
   min-height: 0;
 }
 
 .office-main-area {
   min-width: 0;
   min-height: 0;
+  align-self: start;
 }
 
 .office-side-panel {
@@ -281,9 +282,9 @@ button {
 }
 
 .office-map-shell {
-  min-height: calc(100vh - 210px);
+  min-height: 520px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  align-content: start;
   gap: 16px;
   padding: 18px;
   border: 2px solid rgba(0, 74, 173, 0.14);
@@ -1185,11 +1186,11 @@ button {
   --theme-wall-dark: #28354d;
   --theme-floor: #d6d9dc;
   --theme-floor-line: rgba(113, 128, 150, 0.28);
-  height: calc(100vh - 210px);
-  min-height: 0;
-  overflow: hidden;
+  height: auto;
+  min-height: 520px;
+  overflow: visible;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  align-content: start;
   gap: 16px;
   padding: 18px;
   border: 2px solid rgba(38, 54, 80, 0.15);
@@ -1266,16 +1267,17 @@ button {
 }
 
 .pixel-office-frame {
-  min-height: 0;
-  overflow: auto;
+  min-height: 680px;
+  overflow-x: auto;
+  overflow-y: visible;
   padding-bottom: 4px;
 }
 
 .pixel-office-map {
   position: relative;
   min-width: 760px;
-  min-height: 0;
-  height: 100%;
+  min-height: 680px;
+  height: auto;
   border: 3px solid #202942;
   border-radius: 8px;
   background: #bec9d5;
@@ -1396,6 +1398,7 @@ button {
   right: 0;
   top: 120px;
   bottom: 0;
+  min-height: 560px;
   background: var(--theme-floor);
   overflow: hidden;
 }
@@ -2895,8 +2898,9 @@ button {
 
 /* 2D top-down office overrides */
 .pixel-office-frame {
-  min-height: 0;
-  overflow: auto;
+  min-height: 680px;
+  overflow-x: auto;
+  overflow-y: visible;
   padding-bottom: 4px;
 }
 
@@ -2911,8 +2915,8 @@ button {
 .pixel-office-map {
   position: relative;
   min-width: 760px;
-  min-height: 0;
-  height: 100%;
+  min-height: 680px;
+  height: auto;
   border: 3px solid #202942;
   border-radius: 10px;
   background:
@@ -3114,6 +3118,7 @@ button {
 .pixel-map-floor {
   position: absolute;
   inset: 19% 0 0;
+  min-height: 560px;
   background:
     linear-gradient(180deg, #f8fbfc, #eef5f8);
   z-index: 0;
@@ -4094,6 +4099,7 @@ button {
   .office-side-panel {
     min-width: 0;
     max-width: none;
+    height: calc(100vh - 210px);
     min-height: 0;
   }
 
@@ -4101,4 +4107,246 @@ button {
     height: 100%;
     min-height: 0;
   }
+}
+
+.remote-user-avatar,
+.pixel-player {
+  --avatar-skin: #fff2e8;
+  --avatar-hair: #54463f;
+  --avatar-hair-soft: #76655d;
+  --avatar-outfit: linear-gradient(180deg, #d8e3f2, #92a8c4);
+  --avatar-accent: #f7f9fc;
+  --avatar-name-bg: rgba(248, 244, 236, 0.96);
+  --avatar-name-border: rgba(32, 41, 66, 0.12);
+  --avatar-name-color: #2a3345;
+  --avatar-status: #58c18c;
+}
+
+.remote-user-avatar.variant-representative,
+.pixel-player.variant-representative {
+  --avatar-skin: #fff1e4;
+  --avatar-hair: #403228;
+  --avatar-hair-soft: #6a5544;
+  --avatar-outfit: linear-gradient(180deg, #70b0ff, #2568c7);
+  --avatar-accent: #dbe9ff;
+  --avatar-name-bg: rgba(239, 245, 255, 0.96);
+  --avatar-name-border: rgba(0, 74, 173, 0.14);
+  --avatar-name-color: #1d3d73;
+  --avatar-status: #3fb980;
+}
+
+.remote-user-avatar.variant-staff-soyeon,
+.pixel-player.variant-staff-soyeon {
+  --avatar-skin: #fff4ee;
+  --avatar-hair: #5a433f;
+  --avatar-hair-soft: #86656a;
+  --avatar-outfit: linear-gradient(180deg, #eff5ff, #cbdcf4);
+  --avatar-accent: #f0d8de;
+  --avatar-name-bg: rgba(255, 249, 246, 0.97);
+  --avatar-name-border: rgba(157, 129, 149, 0.18);
+  --avatar-name-color: #6b4d5a;
+  --avatar-status: #62c9a2;
+}
+
+.remote-user-avatar.variant-default,
+.pixel-player.variant-default {
+  --avatar-skin: #fff1e6;
+  --avatar-hair: #4f5968;
+  --avatar-hair-soft: #7c8798;
+  --avatar-outfit: linear-gradient(180deg, #ecf0f4, #b8c3d1);
+  --avatar-accent: #dde7f0;
+  --avatar-name-bg: rgba(250, 248, 244, 0.96);
+  --avatar-name-border: rgba(32, 41, 66, 0.1);
+  --avatar-name-color: #344054;
+  --avatar-status: #59be87;
+}
+
+.remote-user-avatar.variant-representative {
+  z-index: 11;
+}
+
+.remote-user-avatar {
+  gap: 4px;
+}
+
+.remote-user-avatar .remote-user-shadow {
+  top: 31px;
+  width: 22px;
+  height: 8px;
+  background: rgba(15, 23, 42, 0.16);
+}
+
+.remote-user-avatar .remote-user-sprite {
+  width: 30px;
+  height: 38px;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.remote-user-avatar .remote-user-head,
+.pixel-player .pixel-player-head {
+  position: relative;
+  display: block;
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+  background: var(--avatar-skin);
+  box-shadow:
+    inset 0 -2px 0 rgba(255, 255, 255, 0.38),
+    0 1px 0 rgba(32, 41, 66, 0.06);
+}
+
+.remote-user-avatar .remote-user-head::before,
+.pixel-player .pixel-player-head::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: -3px;
+  height: 12px;
+  border-bottom: 2px solid #202942;
+  border-radius: 8px 8px 6px 6px;
+  background: linear-gradient(180deg, var(--avatar-hair), var(--avatar-hair-soft));
+}
+
+.remote-user-avatar .remote-user-head::after,
+.pixel-player .pixel-player-head::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  width: 9px;
+  height: 6px;
+  border-radius: 0 0 6px 6px;
+  background: var(--avatar-hair-soft);
+}
+
+.remote-user-avatar.variant-representative .remote-user-head::after,
+.pixel-player.variant-representative .pixel-player-head::after {
+  right: 2px;
+}
+
+.remote-user-avatar.variant-staff-soyeon .remote-user-head::after,
+.pixel-player.variant-staff-soyeon .pixel-player-head::after {
+  left: 1px;
+  width: 12px;
+  height: 7px;
+  border-radius: 0 0 7px 7px;
+}
+
+.remote-user-avatar.variant-staff-soyeon .remote-user-head::before,
+.pixel-player.variant-staff-soyeon .pixel-player-head::before {
+  height: 13px;
+  border-radius: 9px 9px 7px 7px;
+}
+
+.remote-user-avatar .remote-user-body,
+.pixel-player .pixel-player-outfit {
+  position: relative;
+  background: var(--avatar-outfit);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 3px 0 rgba(32, 41, 66, 0.12);
+}
+
+.remote-user-avatar .remote-user-body::before,
+.pixel-player .pixel-player-outfit::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  width: 10px;
+  height: 5px;
+  transform: translateX(-50%);
+  border-radius: 0 0 5px 5px;
+  background: var(--avatar-accent);
+}
+
+.remote-user-avatar .remote-user-body::after,
+.pixel-player .pixel-player-outfit::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 14px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(32, 41, 66, 0.16);
+}
+
+.remote-user-avatar .remote-user-head {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 20px;
+  height: 18px;
+  transform: translateX(-50%);
+  border: 2px solid #202942;
+  border-radius: 7px 7px 6px 6px;
+}
+
+.remote-user-avatar .remote-user-body {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 18px;
+  height: 14px;
+  transform: translateX(-50%);
+  border: 2px solid #202942;
+  border-radius: 6px 6px 3px 3px;
+}
+
+.remote-user-avatar .remote-user-nameplate,
+.pixel-player .pixel-player-name {
+  padding: 3px 7px;
+  border: 1px solid var(--avatar-name-border);
+  border-radius: 999px;
+  background: var(--avatar-name-bg);
+  color: var(--avatar-name-color);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+}
+
+.remote-user-avatar .remote-user-nameplate {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.remote-user-avatar .remote-user-status-dot {
+  top: 5px;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  border: 2px solid #fff;
+  background: var(--avatar-status);
+  box-shadow: 0 0 0 1px rgba(32, 41, 66, 0.12);
+}
+
+.pixel-player.variant-staff-soyeon .pixel-player-head,
+.pixel-player.variant-representative .pixel-player-head,
+.pixel-player.variant-default .pixel-player-head {
+  line-height: 0;
+}
+
+.pixel-player .pixel-player-name {
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+}
+
+.pixel-player.near-agent .pixel-player-name,
+.pixel-player.near-agent .pixel-player-hint {
+  background: #ffe46d;
+  color: #3f3311;
+  border-color: rgba(99, 82, 16, 0.18);
+}
+
+.pixel-player.near-agent .pixel-player-outfit {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 4px rgba(255, 228, 109, 0.45),
+    0 3px 0 rgba(32, 41, 66, 0.12);
 }

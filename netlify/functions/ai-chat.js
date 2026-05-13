@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 import { brandContextInstructions } from "../../src/data/brandContext.js";
-import { buildToneInstruction } from "../../src/data/userToneProfiles.js";
+import {
+  buildToneInstruction,
+  isOwnerEmail,
+  isSoyeonEmail,
+} from "../../src/data/userToneProfiles.js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -35,6 +39,28 @@ const MAX_TASK_TITLE_CHARS = 120;
 const MAX_TASK_DESCRIPTION_CHARS = 800;
 const MAX_EXPECTED_OUTPUT_CHARS = 320;
 const MAX_TASK_RESULT_CHARS = 6000;
+const LONG_FORM_REQUEST_KEYWORDS = [
+  "자세히",
+  "길게",
+  "상세",
+  "전문",
+  "전체 문서",
+  "전체문서",
+  "지시서",
+  "코드 전체",
+  "코드전체",
+  "full document",
+  "full doc",
+  "in detail",
+  "detailed",
+  "long-form",
+];
+const COMPACT_AGENT_PROMPT_SUFFIX = [
+  "Keep default answers compact.",
+  "If the user does not explicitly ask for a long response, report only the key points.",
+  "Address 대표님 in a concise, report-like style, and address 소연님 in a gentle, polite, non-wordy style.",
+  "Do not try to fill a 900-character or max-token budget unnecessarily.",
+].join(" ");
 
 const ALLOWED_AGENT_IDS = [
   "director",
@@ -51,37 +77,37 @@ const AGENT_EXECUTION_META = {
     name: "Director AI",
     role: "전시 기획 디렉터",
     systemPrompt:
-      "You are Director AI for Kün's Gallery and UNFRAME. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, artist positioning, project structure, and long-term brand direction across both brands.",
+      `You are Director AI for Kün's Gallery and UNFRAME. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, artist positioning, project structure, and long-term brand direction across both brands. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
   copy: {
     name: "Copy AI",
     role: "카피라이터",
     systemPrompt:
-      "You are Copy AI for UNFRAME. Write elegant but accessible Korean copy. Avoid clichés. Make language editorial, memorable, and suitable for Instagram, exhibition texts, and gallery communication.",
+      `You are Copy AI for UNFRAME. Write elegant but accessible Korean copy. Avoid clichés. Make language editorial, memorable, and suitable for Instagram, exhibition texts, and gallery communication. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
   design: {
     name: "Design Prompt AI",
     role: "디자인 프롬프트 제작자",
     systemPrompt:
-      "You are Design Prompt AI for Kün's Gallery and UNFRAME. Create detailed, production-ready Korean prompts for AI image tools. Always specify subject, art direction, framing, composition, materials, lighting, palette, typography, layout hierarchy, texture, camera cues, exclusions, and intended output usage. Aim for high-end editorial quality with experimental but usable direction.",
+      `You are Design Prompt AI for Kün's Gallery and UNFRAME. Create detailed, production-ready Korean prompts for AI image tools. Always specify subject, art direction, framing, composition, materials, lighting, palette, typography, layout hierarchy, texture, camera cues, exclusions, and intended output usage. Aim for high-end editorial quality with experimental but usable direction. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
   music: {
     name: "Music AI",
     role: "UP 음악 큐레이터",
     systemPrompt:
-      "You are Music AI for UNFRAME Playlist. Create Suno prompts, exhibition OST directions, and playlist concepts. Keep prompts practical, emotionally refined, and suitable for 3 to 5 minute full songs.",
+      `You are Music AI for UNFRAME Playlist. Create Suno prompts, exhibition OST directions, and playlist concepts. Keep prompts practical, emotionally refined, and suitable for 3 to 5 minute full songs. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
   admin: {
     name: "총괄 매니저 AI",
     role: "업무 총괄 · 우선순위 · 실행 관리",
     systemPrompt:
-      "You are the 총괄 매니저 AI for Kün's Gallery and UNFRAME. Always call the user 대표님. Respond like a personal chief-of-staff: concise, structured, and report-like. Understand the difference between Kün's Gallery and UNFRAME, keep the brand contexts separate when needed, and frame decisions around long-term brand value plus practical execution. Be very polite and gentle when referring to 소연님. Break goals into executable steps, decide which AI should own each task, prioritize what matters next, and keep meeting-room collaboration, schedules, checklists, and operational follow-through tightly organized. Avoid long-winded explanations and focus on the next actionable move.",
+      `You are the 총괄 매니저 AI for Kün's Gallery and UNFRAME. Always call the user 대표님. Respond like a personal chief-of-staff: concise, structured, and report-like. Understand the difference between Kün's Gallery and UNFRAME, keep the brand contexts separate when needed, and frame decisions around long-term brand value plus practical execution. Be very polite and gentle when referring to 소연님. Break goals into executable steps, decide which AI should own each task, prioritize what matters next, and keep meeting-room collaboration, schedules, checklists, and operational follow-through tightly organized. Avoid long-winded explanations and focus on the next actionable move. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
   archive: {
     name: "Archive AI",
     role: "U# 아카이브 에디터",
     systemPrompt:
-      "You are Archive AI for U# magazine. Help turn exhibitions, interviews, notes, and behind-the-scenes material into polished archive articles and editorial records.",
+      `You are Archive AI for U# magazine. Help turn exhibitions, interviews, notes, and behind-the-scenes material into polished archive articles and editorial records. ${COMPACT_AGENT_PROMPT_SUFFIX}`,
   },
 };
 
@@ -265,12 +291,77 @@ function buildSharedPromptContext(userEmail) {
   return [brandContextInstructions, buildToneInstruction(userEmail)].join("\n\n");
 }
 
-function buildChatInstructions(agentPrompt, memorySummary, userEmail) {
+function isLongFormRequestedFromTexts(texts) {
+  const haystack = (Array.isArray(texts) ? texts : [])
+    .map((text) => (typeof text === "string" ? text.toLowerCase() : ""))
+    .filter(Boolean)
+    .join("\n");
+
+  return LONG_FORM_REQUEST_KEYWORDS.some((keyword) =>
+    haystack.includes(keyword.toLowerCase()),
+  );
+}
+
+function buildCompactReplyInstructions({
+  userEmail,
+  allowLongForm = false,
+  context = "chat",
+}) {
+  const userStyleInstruction = isSoyeonEmail(userEmail)
+    ? "소연님에게는 공손하고 부드럽게 답하되 장황하게 늘이지 않는다."
+    : isOwnerEmail(userEmail)
+      ? "대표님에게는 핵심 보고처럼 짧고 명확하게 답한다."
+      : "사용자에게는 짧고 명확하게 답한다.";
+
+  const contextSpecificInstructions =
+    context === "execution"
+      ? allowLongForm
+        ? [
+            "이번 응답은 작업 결과물이므로 필요한 분량까지는 충분히 작성하되, 반복 설명은 넣지 않는다.",
+            "필요한 경우에만 짧은 섹션으로 나누고, 결과물 특성상 꼭 필요할 때만 길게 작성한다.",
+          ]
+        : [
+            "이번 응답은 작업 카드 실행 결과이므로 기본은 실무용 압축본으로 작성한다.",
+            "보통 3~6문장 또는 5개 이하 항목으로 정리하고, 필요한 경우에만 짧은 섹션을 사용한다.",
+            "결과가 실제로 길어야 하는 작업이 아니면 길게 늘이지 않는다.",
+          ]
+      : allowLongForm
+        ? [
+            "사용자가 자세한 답변을 요청한 경우이므로 필요한 분량까지 답하되, 반복 설명은 넣지 않는다.",
+          ]
+        : [
+            "기본 답변은 3~6문장 또는 5개 이하 항목으로 제한한다.",
+            "일반 채팅 응답은 보통 300~500자 안팎으로 요약한다.",
+          ];
+
+  return [
+    "응답 길이 규칙:",
+    ...contextSpecificInstructions,
+    userStyleInstruction,
+    "불필요한 서론, 반복, 배경 설명을 길게 붙이지 않는다.",
+    "\"아래처럼 정리했습니다\" 같은 문장을 쓰더라도 바로 다음 줄에서 핵심을 제시한다.",
+    "리스트는 기본적으로 최대 5개까지만 사용한다.",
+    "max_output_tokens 한도를 채우기 위해 억지로 길게 쓰지 않는다.",
+  ].join("\n");
+}
+
+function buildChatInstructions(agentPrompt, memorySummary, userEmail, allowLongForm) {
   const summaryInstructions = memorySummary
     ? `\n\n이전 대화 요약:\n${memorySummary}\n\n이 요약을 참고하되, 최근 사용자의 요청을 우선한다.`
     : "";
 
-  return `${agentPrompt}\n\n${buildSharedPromptContext(userEmail)}${summaryInstructions}`;
+  return [
+    agentPrompt,
+    buildSharedPromptContext(userEmail),
+    buildCompactReplyInstructions({
+      userEmail,
+      allowLongForm,
+      context: "chat",
+    }),
+    summaryInstructions ? summaryInstructions.trim() : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function buildSummaryInstructions(agentPrompt, memorySummary) {
@@ -323,7 +414,12 @@ function buildPlanRequest({ goal, roomName, agentIds }) {
   ].join("\n\n");
 }
 
-function buildExecutionInstructions(agentMeta, memorySummary, userEmail) {
+function buildExecutionInstructions(
+  agentMeta,
+  memorySummary,
+  userEmail,
+  allowLongForm,
+) {
   const managerModeInstructions =
     agentMeta?.name === "총괄 매니저 AI"
       ? [
@@ -336,6 +432,11 @@ function buildExecutionInstructions(agentMeta, memorySummary, userEmail) {
   return [
     agentMeta.systemPrompt,
     buildSharedPromptContext(userEmail),
+    buildCompactReplyInstructions({
+      userEmail,
+      allowLongForm,
+      context: "execution",
+    }),
     ...managerModeInstructions,
     "이번 응답은 작업 카드 실행 결과다.",
     "첫 문장 또는 가장 자연스러운 첫 호흡에 반드시 호칭을 넣는다.",
@@ -549,9 +650,19 @@ async function handleChat({ agent, messages, memorySummary, userEmail, mode }) {
 
   const resolvedMode = resolveMode(mode, userEmail);
   const model = resolvedMode === "premium" ? PREMIUM_MODEL : DEFAULT_MODEL;
+  const allowLongForm = isLongFormRequestedFromTexts(
+    sanitizedMessages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content),
+  );
   const response = await openai.responses.create({
     model,
-    instructions: buildChatInstructions(agent.systemPrompt, safeSummary, userEmail),
+    instructions: buildChatInstructions(
+      agent.systemPrompt,
+      safeSummary,
+      userEmail,
+      allowLongForm,
+    ),
     input: sanitizedMessages,
     max_output_tokens: MAX_OUTPUT_TOKENS,
   });
@@ -638,10 +749,24 @@ async function handleExecuteTask({
   const resolvedMode = resolveMode(mode, userEmail);
   const model = resolvedMode === "premium" ? PREMIUM_MODEL : DEFAULT_MODEL;
   const agentMeta = AGENT_EXECUTION_META[safeTaskItem.assignedAgentId];
+  const allowLongForm = isLongFormRequestedFromTexts([
+    safeTaskItem.title,
+    safeTaskItem.description,
+    safeTaskItem.expectedOutput,
+    safeTaskItem.goal,
+    ...sanitizedMessages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content),
+  ]);
 
   const response = await openai.responses.create({
     model,
-    instructions: buildExecutionInstructions(agentMeta, safeSummary, userEmail),
+    instructions: buildExecutionInstructions(
+      agentMeta,
+      safeSummary,
+      userEmail,
+      allowLongForm,
+    ),
     input: [
       ...sanitizedMessages,
       {

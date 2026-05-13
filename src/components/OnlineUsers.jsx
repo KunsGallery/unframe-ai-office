@@ -1,6 +1,7 @@
 import {
-  getUserAvatarEmoji,
   getUserDisplayLabel,
+  isOwnerEmail,
+  isSoyeonEmail,
 } from "../data/userToneProfiles";
 
 const FALLBACK_POSITIONS = [
@@ -24,23 +25,38 @@ function getDisplayPosition(user, index) {
   };
 }
 
+function getRemoteUserVariant(userEmail) {
+  if (typeof userEmail !== "string" || !userEmail.trim()) {
+    return "default";
+  }
+
+  if (isOwnerEmail(userEmail)) {
+    return "representative";
+  }
+
+  if (isSoyeonEmail(userEmail)) {
+    return "staff-soyeon";
+  }
+
+  return "default";
+}
+
 export default function OnlineUsers({ users = [] }) {
   return users.map((user, index) => {
     const position = getDisplayPosition(user, index);
     const label = user?.avatarLabel || getUserDisplayLabel(user?.userEmail);
-    const emoji = getUserAvatarEmoji(user?.userEmail);
-    const isOwner = label === "대표님";
+    const variant = getRemoteUserVariant(user?.userEmail);
 
     return (
       <div
         key={user.id || user.userEmail || `${label}-${index}`}
-        className={`remote-user-avatar ${isOwner ? "owner" : "staff"}`}
+        className={`remote-user-avatar variant-${variant}`}
         style={{ left: `${position.x}%`, top: `${position.y}%` }}
         title={user?.displayName || user?.userEmail || label}
       >
         <div className="remote-user-shadow" aria-hidden="true" />
         <div className="remote-user-sprite" aria-hidden="true">
-          <div className="remote-user-head">{emoji}</div>
+          <div className="remote-user-head" />
           <div className="remote-user-body" />
         </div>
         <div className="remote-user-nameplate">{label}</div>

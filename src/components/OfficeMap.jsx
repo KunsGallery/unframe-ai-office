@@ -6,7 +6,6 @@ import {
   OFFICE_OBJECTS,
 } from "../data/pixelOfficeLayout";
 import { useAgentMotion } from "../hooks/useAgentMotion";
-import AgentActivityPanel from "./AgentActivityPanel";
 import OfficeAgent from "./OfficeAgent";
 import OnlineUsers from "./OnlineUsers";
 import PlayerAvatar from "./PlayerAvatar";
@@ -178,7 +177,6 @@ export default function OfficeMap({
   );
 
   const nearestCharacterId = nearestCharacter?.agent?.id || null;
-  const nearestInteractionAgentId = nearestInteractionTarget?.agent?.id || null;
   const activeStatus = AGENT_STATUSES.talking;
 
   const visualStates = useMemo(() => {
@@ -524,13 +522,6 @@ export default function OfficeMap({
           </div>
         </div>
       </div>
-
-      <AgentActivityPanel
-        agents={agents}
-        agentVisualStates={visualStates}
-        activeAgentId={activeAgentId}
-        nearestAgentId={nearestInteractionAgentId}
-      />
 
       {import.meta.env.DEV ? (
         <button
