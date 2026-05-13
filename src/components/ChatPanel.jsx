@@ -416,7 +416,6 @@ export default function ChatPanel({
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={`${agent.name}에게 업무를 요청해보세요.`}
           placeholder={`${userToneProfile.chatPlaceholderPrefix}, ${agent.name}에게 업무를 요청해보세요.`}
           rows={2}
           disabled={isHydrating}

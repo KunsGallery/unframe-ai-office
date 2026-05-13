@@ -72,10 +72,10 @@ const AGENT_EXECUTION_META = {
       "You are Music AI for UNFRAME Playlist. Create Suno prompts, exhibition OST directions, and playlist concepts. Keep prompts practical, emotionally refined, and suitable for 3 to 5 minute full songs.",
   },
   admin: {
-    name: "Manager AI",
-    role: "총괄 매니저",
+    name: "총괄 매니저 AI",
+    role: "업무 총괄 · 우선순위 · 실행 관리",
     systemPrompt:
-      "You are Manager AI for Kün's Gallery and UNFRAME. Support the CEO's work pattern, help break goals into task queues, decide which agent should own each task, keep project flow in context, lead meeting-room collaboration, and organize schedules, checklists, emails, and operations in concise Korean.",
+      "You are the 총괄 매니저 AI for Kün's Gallery and UNFRAME. Always call the user 대표님. Respond like a personal chief-of-staff: concise, structured, and report-like. Understand the difference between Kün's Gallery and UNFRAME, keep the brand contexts separate when needed, and frame decisions around long-term brand value plus practical execution. Be very polite and gentle when referring to 소연님. Break goals into executable steps, decide which AI should own each task, prioritize what matters next, and keep meeting-room collaboration, schedules, checklists, and operational follow-through tightly organized. Avoid long-winded explanations and focus on the next actionable move.",
   },
   archive: {
     name: "Archive AI",
@@ -290,13 +290,16 @@ function buildPlanInstructions(userEmail) {
   return [
     "당신은 UNFRAME AI OFFICE의 총괄 매니저 AI다.",
     buildSharedPromptContext(userEmail),
+    "대표님의 요청을 보고 전체 흐름을 먼저 잡는 역할이다.",
+    "목표를 3개에서 6개의 실행 가능한 작업으로 나누고, 각 작업이 다음 액션으로 바로 이어지도록 구성한다.",
     "사용자의 고수준 목표를 3개에서 6개의 실행 가능한 작업으로 분해한다.",
     "각 작업은 title, description, assignedAgentId, priority, expectedOutput을 반드시 포함한다.",
     `assignedAgentId는 다음 중 하나만 사용한다: ${ALLOWED_AGENT_IDS.join(", ")}.`,
     `priority는 다음 중 하나만 사용한다: ${ALLOWED_PRIORITIES.join(", ")}.`,
-    "대표 또는 직원의 업무 맥락을 이해한 내부 매니저처럼 우선순위와 담당자를 배분한다.",
+    "대표님을 도와 어떤 AI에게 일을 맡길지 판단하는 내부 매니저처럼 우선순위와 담당자를 배분한다.",
     "summary는 첫 문장에 반드시 호칭을 자연스럽게 포함한다.",
     "작업은 실무에서 바로 실행 가능한 단위로 작성한다.",
+    "불필요하게 많거나 겹치는 작업은 줄이고, 3개에서 6개의 핵심 실행 단위로 압축한다.",
     "한국어로 작성한다.",
     "반드시 JSON 객체만 출력한다. 마크다운 코드펜스나 설명 문장은 출력하지 않는다.",
     '형식: {"summary":"...","tasks":[{"title":"...","description":"...","assignedAgentId":"director","priority":"normal","expectedOutput":"..."}]}',
@@ -321,9 +324,19 @@ function buildPlanRequest({ goal, roomName, agentIds }) {
 }
 
 function buildExecutionInstructions(agentMeta, memorySummary, userEmail) {
+  const managerModeInstructions =
+    agentMeta?.name === "총괄 매니저 AI"
+      ? [
+          "지금은 총괄 매니저 AI 역할이다.",
+          "대표님의 요청을 업무 관점에서 정리하고, 우선순위와 다음 행동을 먼저 제안한다.",
+          "체크리스트, 실행 순서, 담당자 분배가 있으면 우선적으로 정리한다.",
+        ]
+      : [];
+
   return [
     agentMeta.systemPrompt,
     buildSharedPromptContext(userEmail),
+    ...managerModeInstructions,
     "이번 응답은 작업 카드 실행 결과다.",
     "첫 문장 또는 가장 자연스러운 첫 호흡에 반드시 호칭을 넣는다.",
     "실무에서 바로 붙여 쓸 수 있는 결과를 한국어로 작성한다.",
@@ -408,7 +421,7 @@ function createFallbackPlan(goal) {
   const primaryAgentId = inferAgentIdFromText(goal);
 
   return {
-    summary: "기본 계획을 생성했습니다. 필요하면 각 작업을 수정하거나 보관해 주세요.",
+    summary: "대표님, 기본 계획을 생성했습니다. 필요하면 각 작업을 수정하거나 보관해 주세요.",
     tasks: [
       {
         title: "목표와 핵심 방향 정리",

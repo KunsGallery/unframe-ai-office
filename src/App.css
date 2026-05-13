@@ -209,16 +209,20 @@ button {
   grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.95fr);
   gap: 20px;
   align-items: stretch;
+  min-height: 0;
 }
 
 .office-main-area {
   min-width: 0;
+  min-height: 0;
 }
 
 .office-side-panel {
   min-width: 360px;
   max-width: 420px;
-  min-height: calc(100vh - 210px);
+  height: calc(100vh - 210px);
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -257,15 +261,23 @@ button {
 }
 
 .side-panel-content.tasks {
-  overflow-y: auto;
+  overflow: hidden;
+}
+
+.side-panel-content.chat,
+.side-panel-content.tasks {
+  display: flex;
+  flex-direction: column;
 }
 
 .side-panel-content .chat-panel {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .side-panel-content.tasks .agent-task-queue {
   margin: 0;
+  height: 100%;
 }
 
 .office-map-shell {
@@ -697,6 +709,100 @@ button {
     0 12px 20px rgba(0, 0, 0, 0.08);
 }
 
+.remote-user-avatar {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 9;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  pointer-events: none;
+  transition:
+    left 0.48s ease-out,
+    top 0.48s ease-out,
+    opacity 0.18s ease-out,
+    transform 0.48s ease-out;
+  will-change: left, top, transform;
+}
+
+.remote-user-avatar.owner {
+  z-index: 11;
+}
+
+.remote-user-shadow {
+  position: absolute;
+  top: 27px;
+  width: 24px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.14);
+  filter: blur(1px);
+}
+
+.remote-user-sprite {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(0, 74, 173, 0.16);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #fffefe, #edf5ff);
+  box-shadow:
+    0 5px 0 rgba(0, 74, 173, 0.07),
+    0 10px 18px rgba(0, 0, 0, 0.08);
+}
+
+.remote-user-avatar.owner .remote-user-sprite {
+  border-color: rgba(0, 74, 173, 0.26);
+  background: linear-gradient(180deg, #fff9eb, #eef4ff);
+}
+
+.remote-user-head {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.remote-user-body {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 18px;
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 6px 6px 4px 4px;
+  background: linear-gradient(180deg, #5a9ded, #004aad);
+  box-shadow: 0 3px 0 rgba(0, 74, 173, 0.12);
+}
+
+.remote-user-nameplate {
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 74, 173, 0.1);
+  color: #13233e;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.remote-user-status-dot {
+  position: absolute;
+  top: 1px;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #4cc38a;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 74, 173, 0.12);
+}
+
 .office-map-help {
   display: flex;
   justify-content: space-between;
@@ -768,9 +874,10 @@ button {
 }
 
 .chat-panel {
-  min-height: calc(100vh - 210px);
-  display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.76);
@@ -866,6 +973,7 @@ button {
 
 .chat-memory-bar {
   min-height: 24px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -881,6 +989,8 @@ button {
 }
 
 .chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 20px;
   overflow-y: auto;
   display: flex;
@@ -912,12 +1022,14 @@ button {
 }
 
 .chat-usage {
+  flex: 0 0 auto;
   padding: 0 20px 12px;
   color: #666;
   font-size: 12px;
 }
 
 .chat-input-row {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
@@ -977,7 +1089,8 @@ button {
   }
 
   .chat-panel {
-    min-height: 70vh;
+    height: 100%;
+    min-height: 0;
   }
 
   .message {
@@ -1072,9 +1185,11 @@ button {
   --theme-wall-dark: #28354d;
   --theme-floor: #d6d9dc;
   --theme-floor-line: rgba(113, 128, 150, 0.28);
-  min-height: calc(100vh - 210px);
+  height: calc(100vh - 210px);
+  min-height: 0;
+  overflow: hidden;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   gap: 16px;
   padding: 18px;
   border: 2px solid rgba(38, 54, 80, 0.15);
@@ -1151,15 +1266,16 @@ button {
 }
 
 .pixel-office-frame {
-  overflow-x: auto;
-  overflow-y: hidden;
+  min-height: 0;
+  overflow: auto;
   padding-bottom: 4px;
 }
 
 .pixel-office-map {
   position: relative;
   min-width: 760px;
-  min-height: 720px;
+  min-height: 0;
+  height: 100%;
   border: 3px solid #202942;
   border-radius: 8px;
   background: #bec9d5;
@@ -2302,6 +2418,8 @@ button {
   border-radius: 8px;
   background: linear-gradient(180deg, #fbf7ef, rgba(255, 255, 255, 0.92));
   box-shadow: 6px 6px 0 rgba(32, 41, 66, 0.12);
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .activity-panel-title {
@@ -2312,12 +2430,18 @@ button {
   text-transform: uppercase;
 }
 
+.agent-activity-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+}
+
 .activity-row {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 2px solid rgba(32, 41, 66, 0.14);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.82);
@@ -2337,15 +2461,18 @@ button {
 }
 
 .activity-agent strong {
-  font-size: 12px;
+  font-size: 11px;
   color: #182033;
 }
 
 .activity-agent span,
 .activity-status {
-  font-size: 11px;
+  font-size: 10px;
   color: #5e6471;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .activity-row.status-idle .activity-dot {
@@ -2768,7 +2895,8 @@ button {
 
 /* 2D top-down office overrides */
 .pixel-office-frame {
-  overflow-x: auto;
+  min-height: 0;
+  overflow: auto;
   padding-bottom: 4px;
 }
 
@@ -2783,7 +2911,8 @@ button {
 .pixel-office-map {
   position: relative;
   min-width: 760px;
-  min-height: 680px;
+  min-height: 0;
+  height: 100%;
   border: 3px solid #202942;
   border-radius: 10px;
   background:
@@ -3223,7 +3352,11 @@ button {
 }
 
 .agent-task-queue {
-  display: grid;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 16px;
   border-radius: 18px;
@@ -3235,6 +3368,8 @@ button {
 .agent-task-queue.compact {
   padding: 12px;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
 }
 
 .task-queue-header {
@@ -3356,6 +3491,10 @@ button {
 }
 
 .task-queue-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
   display: grid;
   gap: 10px;
 }
@@ -3959,6 +4098,7 @@ button {
   }
 
   .side-panel-content .chat-panel {
-    min-height: calc(100vh - 210px);
+    height: 100%;
+    min-height: 0;
   }
 }

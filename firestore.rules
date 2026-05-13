@@ -500,11 +500,15 @@ service cloud.firestore {
       allow get, list: if isAllowedStaff();
 
       allow create: if isAllowedStaff() &&
+        request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == userEmail() &&
         isValidPresenceData(request.resource.data.roomId, userKey);
 
       allow update: if isAllowedStaff() &&
         resource.data.userEmail is string &&
         resource.data.userEmail == userEmail() &&
+        request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == userEmail() &&
         isValidPresenceData(request.resource.data.roomId, userKey);
 
       allow delete: if isAllowedStaff() &&

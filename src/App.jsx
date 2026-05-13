@@ -10,7 +10,6 @@ import OfficeMap from "./components/OfficeMap";
 import RoomSelector from "./components/RoomSelector";
 import SettingsPanel from "./components/SettingsPanel";
 import {
-  startPresence,
   stopPresence,
   subscribeOnlineUsers,
 } from "./lib/presence";
@@ -53,19 +52,6 @@ export default function App() {
     user?.email && allowedEmails.includes(user.email) && activeRoom,
   );
   const visibleOnlineUsers = canUsePresence ? onlineUsers : [];
-
-  useEffect(() => {
-    if (!canUsePresence) {
-      return undefined;
-    }
-
-    void startPresence({
-      user,
-      room: activeRoom,
-    });
-
-    return undefined;
-  }, [activeRoom, canUsePresence, user]);
 
   useEffect(() => {
     if (!canUsePresence) {
@@ -157,6 +143,7 @@ export default function App() {
       <section className="office-mode-layout">
         <section className="office-main-area">
           <OfficeMap
+            key={activeRoomId}
             agents={agents}
             activeAgentId={activeAgentId}
             onSelectAgent={setActiveAgentId}

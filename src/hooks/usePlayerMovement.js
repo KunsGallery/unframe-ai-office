@@ -90,12 +90,16 @@ function isShiftEvent(event) {
 }
 
 export function usePlayerMovement(initialPosition = DEFAULT_INITIAL_POSITION) {
-  const [position, setPosition] = useState(() => initialPosition);
+  const resolvedInitialPosition = {
+    x: initialPosition?.x ?? DEFAULT_INITIAL_POSITION.x,
+    y: initialPosition?.y ?? DEFAULT_INITIAL_POSITION.y,
+  };
+  const [position, setPosition] = useState(() => resolvedInitialPosition);
   const [isMoving, setIsMoving] = useState(false);
   const keysRef = useRef(new Set());
   const frameRef = useRef(null);
   const lastTimeRef = useRef(null);
-  const positionRef = useRef(initialPosition);
+  const positionRef = useRef(resolvedInitialPosition);
 
   useEffect(() => {
     positionRef.current = position;

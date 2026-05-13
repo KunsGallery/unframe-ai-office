@@ -11,6 +11,11 @@ import OfficeAgent from "./OfficeAgent";
 import OnlineUsers from "./OnlineUsers";
 import PlayerAvatar from "./PlayerAvatar";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
+import {
+  getPresenceStartPosition,
+  startPresence,
+  updatePresencePosition,
+} from "../lib/presence";
 
 const DEBUG_HIT_AREAS = false;
 const DESK_HIT_RADIUS = 12;
@@ -142,7 +147,12 @@ export default function OfficeMap({
   const activeAgent =
     agents.find((agent) => agent.id === activeAgentId) || agents[0];
 
-  const { position, isMoving } = usePlayerMovement({ x: 50, y: 86 });
+  const roomInitialPosition = useMemo(
+    () => getPresenceStartPosition(room.id),
+    [room.id],
+  );
+
+  const { position, isMoving } = usePlayerMovement(roomInitialPosition);
 
   const {
     agentPositions,
@@ -263,6 +273,36 @@ export default function OfficeMap({
       onMotionApiReady?.(null);
     };
   }, [onMotionApiReady]);
+
+  useEffect(() => {
+    if (!user?.email || !room?.id) {
+      return undefined;
+    }
+
+    void startPresence({
+      user,
+      room,
+      position: roomInitialPosition,
+    }).catch((error) => {
+      console.error("Failed to start presence", error);
+    });
+
+    return undefined;
+  }, [room, roomInitialPosition, user]);
+
+  useEffect(() => {
+    if (!user?.email || !room?.id) {
+      return undefined;
+    }
+
+    updatePresencePosition({
+      user,
+      room,
+      position,
+    });
+
+    return undefined;
+  }, [position, room, user]);
 
   useEffect(() => {
     function handleKeyDown(event) {

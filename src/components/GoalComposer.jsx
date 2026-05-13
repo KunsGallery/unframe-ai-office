@@ -19,7 +19,7 @@ export default function GoalComposer({ room, onCreatePlan, isPlanning }) {
     <form className="goal-composer" onSubmit={handleSubmit}>
       <div className="goal-composer-header">
         <div>
-          <p className="goal-composer-label">MANAGER AI</p>
+          <p className="goal-composer-label">총괄 매니저 AI</p>
           <strong>{room?.name || "Project Room"} 업무 목표</strong>
         </div>
         {isPlanning ? <span className="goal-planning-badge">분배 중</span> : null}
@@ -37,7 +37,7 @@ export default function GoalComposer({ room, onCreatePlan, isPlanning }) {
       <div className="goal-composer-actions">
         <span className="goal-composer-hint">
           {isPlanning
-            ? "Manager AI가 작업을 나누는 중..."
+            ? "총괄 매니저 AI가 작업을 나누는 중..."
             : "자동 실행 없이 계획만 생성합니다."}
         </span>
         <button type="submit" disabled={!trimmedGoal || isPlanning}>

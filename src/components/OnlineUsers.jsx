@@ -1,4 +1,7 @@
-import { getUserDisplayLabel } from "../data/userToneProfiles";
+import {
+  getUserAvatarEmoji,
+  getUserDisplayLabel,
+} from "../data/userToneProfiles";
 
 const FALLBACK_POSITIONS = [
   { x: 14, y: 84 },
@@ -25,20 +28,23 @@ export default function OnlineUsers({ users = [] }) {
   return users.map((user, index) => {
     const position = getDisplayPosition(user, index);
     const label = user?.avatarLabel || getUserDisplayLabel(user?.userEmail);
+    const emoji = getUserAvatarEmoji(user?.userEmail);
+    const isOwner = label === "대표님";
 
     return (
       <div
         key={user.id || user.userEmail || `${label}-${index}`}
-        className="remote-user-avatar"
+        className={`remote-user-avatar ${isOwner ? "owner" : "staff"}`}
         style={{ left: `${position.x}%`, top: `${position.y}%` }}
+        title={user?.displayName || user?.userEmail || label}
       >
-        <div className="remote-user-bubble">온라인</div>
         <div className="remote-user-shadow" aria-hidden="true" />
-        <div className="remote-user-body" aria-hidden="true">
-          <div className="remote-user-head">{label === "대표님" ? "🧑‍💼" : "🙂"}</div>
-          <div className="remote-user-outfit" />
+        <div className="remote-user-sprite" aria-hidden="true">
+          <div className="remote-user-head">{emoji}</div>
+          <div className="remote-user-body" />
         </div>
-        <div className="remote-user-name">{label}</div>
+        <div className="remote-user-nameplate">{label}</div>
+        <span className="remote-user-status-dot" aria-hidden="true" />
       </div>
     );
   });
