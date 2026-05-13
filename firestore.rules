@@ -1,0 +1,157 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function isOwner() {
+      return isSignedIn() &&
+        request.auth.token.email == "gallerykuns@gmail.com";
+    }
+
+    function isAllowedEmail(email) {
+      return email == "gallerykuns@gmail.com" ||
+        email == "sylove887@gmail.com";
+      // Add additional staff emails here.
+    }
+
+    function isAllowedStaff() {
+      return isSignedIn() && isAllowedEmail(request.auth.token.email);
+    }
+
+    function isAllowedRoom(roomId) {
+      return roomId == "general" ||
+        roomId == "exhibition" ||
+        roomId == "up" ||
+        roomId == "u-sharp" ||
+        roomId == "join" ||
+        roomId == "virtual-gallery";
+    }
+
+    function ownsExistingChat() {
+      return resource.data.userEmail is string &&
+        resource.data.userEmail == request.auth.token.email;
+    }
+
+    function ownsIncomingChat() {
+      return request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == request.auth.token.email;
+    }
+
+    function isValidChatData(roomId) {
+      return isAllowedRoom(roomId) &&
+        request.resource.data.keys().hasAll([
+          "agentId",
+          "userEmail",
+          "roomId",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "agentId",
+          "userEmail",
+          "roomId",
+          "summary",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.agentId is string &&
+        request.resource.data.agentId.size() > 0 &&
+        request.resource.data.userEmail is string &&
+        isAllowedEmail(request.resource.data.userEmail) &&
+        request.resource.data.roomId is string &&
+        request.resource.data.roomId == roomId &&
+        request.resource.data.get("summary", "") is string &&
+        request.resource.data.get("summary", "").size() <= 4000 &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    function parentChat(roomId, chatId) {
+      return get(/databases/$(database)/documents/unframeChatRooms/$(roomId)/chats/$(chatId));
+    }
+
+    function canAccessParentChat(roomId, chatId) {
+      return isAllowedRoom(roomId) && (
+        isOwner() ||
+        (
+          exists(/databases/$(database)/documents/unframeChatRooms/$(roomId)/chats/$(chatId)) &&
+          parentChat(roomId, chatId).data.userEmail is string &&
+          parentChat(roomId, chatId).data.userEmail == request.auth.token.email
+        )
+      );
+    }
+
+    function isValidMessageCreate() {
+      return request.resource.data.keys().hasAll([
+          "role",
+          "content",
+          "createdAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "role",
+          "content",
+          "createdAt",
+          "usage",
+          "mode",
+        ]) &&
+        (
+          request.resource.data.role == "user" ||
+          request.resource.data.role == "assistant"
+        ) &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() <= 12000 &&
+        request.resource.data.createdAt is timestamp &&
+        (
+          !request.resource.data.keys().hasAny(["mode"]) ||
+          request.resource.data.mode == null ||
+          request.resource.data.mode == "economy" ||
+          request.resource.data.mode == "premium"
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["usage"]) ||
+          request.resource.data.usage == null ||
+          request.resource.data.usage is map
+        );
+    }
+
+    match /unframeChatRooms/{roomId} {
+      allow read, write: if false;
+
+      match /chats/{chatId} {
+        allow get: if isAllowedRoom(roomId) && isAllowedStaff() && (isOwner() || ownsExistingChat());
+        allow list: if false;
+
+        allow create: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsIncomingChat()) &&
+          isValidChatData(roomId);
+
+        allow update: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsExistingChat()) &&
+          (isOwner() || ownsIncomingChat()) &&
+          isValidChatData(roomId);
+
+        allow delete: if isAllowedRoom(roomId) && isAllowedStaff() && (isOwner() || ownsExistingChat());
+
+        match /messages/{messageId} {
+          allow get: if isAllowedStaff() && canAccessParentChat(roomId, chatId);
+          allow list: if isAllowedStaff() && canAccessParentChat(roomId, chatId);
+
+          allow create: if isAllowedStaff() &&
+            canAccessParentChat(roomId, chatId) &&
+            isValidMessageCreate();
+
+          allow update: if false;
+
+          allow delete: if isAllowedStaff() && canAccessParentChat(roomId, chatId);
+        }
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
