@@ -6,9 +6,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email != null;
     }
 
+    function userEmail() {
+      return isSignedIn() ? request.auth.token.email : "";
+    }
+
     function isOwner() {
       return isSignedIn() &&
-        request.auth.token.email == "gallerykuns@gmail.com";
+        userEmail() == "gallerykuns@gmail.com";
     }
 
     function isAllowedEmail(email) {
@@ -18,7 +22,7 @@ service cloud.firestore {
     }
 
     function isAllowedStaff() {
-      return isSignedIn() && isAllowedEmail(request.auth.token.email);
+      return isSignedIn() && isAllowedEmail(userEmail());
     }
 
     function isAllowedRoom(roomId) {
@@ -32,12 +36,12 @@ service cloud.firestore {
 
     function ownsExistingChat() {
       return resource.data.userEmail is string &&
-        resource.data.userEmail == request.auth.token.email;
+        resource.data.userEmail == userEmail();
     }
 
     function ownsIncomingChat() {
       return request.resource.data.userEmail is string &&
-        request.resource.data.userEmail == request.auth.token.email;
+        request.resource.data.userEmail == userEmail();
     }
 
     function isValidChatData(roomId) {
@@ -79,7 +83,7 @@ service cloud.firestore {
         (
           exists(/databases/$(database)/documents/unframeChatRooms/$(roomId)/chats/$(chatId)) &&
           parentChat(roomId, chatId).data.userEmail is string &&
-          parentChat(roomId, chatId).data.userEmail == request.auth.token.email
+          parentChat(roomId, chatId).data.userEmail == userEmail()
         )
       );
     }
@@ -119,22 +123,67 @@ service cloud.firestore {
 
     function ownsExistingTask() {
       return resource.data.userEmail is string &&
-        resource.data.userEmail == request.auth.token.email;
+        resource.data.userEmail == userEmail();
     }
 
     function ownsIncomingTask() {
       return request.resource.data.userEmail is string &&
-        request.resource.data.userEmail == request.auth.token.email;
+        request.resource.data.userEmail == userEmail();
     }
 
     function ownsExistingOutput() {
       return resource.data.userEmail is string &&
-        resource.data.userEmail == request.auth.token.email;
+        resource.data.userEmail == userEmail();
     }
 
     function ownsIncomingOutput() {
       return request.resource.data.userEmail is string &&
-        request.resource.data.userEmail == request.auth.token.email;
+        request.resource.data.userEmail == userEmail();
+    }
+
+    function isValidPresenceData(roomId, userKey) {
+      return userKey.matches('^[a-z0-9_]+$') &&
+        isAllowedRoom(roomId) &&
+        request.resource.data.keys().hasAll([
+          "userEmail",
+          "displayName",
+          "roomId",
+          "roomName",
+          "status",
+          "avatarLabel",
+          "x",
+          "y",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "userEmail",
+          "displayName",
+          "roomId",
+          "roomName",
+          "status",
+          "avatarLabel",
+          "x",
+          "y",
+          "updatedAt",
+        ]) &&
+        request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == userEmail() &&
+        isAllowedEmail(request.resource.data.userEmail) &&
+        request.resource.data.displayName is string &&
+        request.resource.data.displayName.size() <= 120 &&
+        request.resource.data.roomId is string &&
+        request.resource.data.roomId == roomId &&
+        request.resource.data.roomName is string &&
+        request.resource.data.roomName.size() <= 120 &&
+        (
+          request.resource.data.status == "online" ||
+          request.resource.data.status == "offline"
+        ) &&
+        request.resource.data.avatarLabel is string &&
+        request.resource.data.avatarLabel.size() <= 40 &&
+        request.resource.data.x is number &&
+        request.resource.data.y is number &&
+        request.resource.data.updatedAt is timestamp;
     }
 
     function isAllowedTaskAgent(agentId) {
@@ -406,7 +455,7 @@ service cloud.firestore {
               (
                 exists(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)) &&
                 get(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)).data.userEmail is string &&
-                get(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)).data.userEmail == request.auth.token.email
+                get(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)).data.userEmail == userEmail()
               )
             );
 
@@ -445,6 +494,27 @@ service cloud.firestore {
         allow delete: if isAllowedRoom(roomId) && isAllowedStaff() &&
           (isOwner() || ownsExistingOutput());
       }
+    }
+
+    match /unframePresence/{userKey} {
+      allow get, list: if isAllowedStaff();
+
+      allow create: if isAllowedStaff() &&
+        isValidPresenceData(request.resource.data.roomId, userKey);
+
+      allow update: if isAllowedStaff() &&
+        resource.data.userEmail is string &&
+        resource.data.userEmail == userEmail() &&
+        isValidPresenceData(request.resource.data.roomId, userKey);
+
+      allow delete: if isAllowedStaff() &&
+        (
+          isOwner() ||
+          (
+            resource.data.userEmail is string &&
+            resource.data.userEmail == userEmail()
+          )
+        );
     }
 
     match /{document=**} {

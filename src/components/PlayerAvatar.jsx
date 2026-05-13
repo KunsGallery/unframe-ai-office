@@ -1,4 +1,8 @@
-const OWNER_EMAIL = "gallerykuns@gmail.com";
+import {
+  getUserAvatarEmoji,
+  getUserDisplayLabel,
+  isOwnerEmail,
+} from "../data/userToneProfiles";
 
 export default function PlayerAvatar({
   user,
@@ -7,9 +11,9 @@ export default function PlayerAvatar({
   isNearAgent,
   nearestAgentName,
 }) {
-  const isOwner = user?.email === OWNER_EMAIL;
-  const emoji = isOwner ? "🧑‍💼" : "🙂";
-  const label = isOwner ? "대표님" : user?.displayName || "Staff";
+  const isOwner = isOwnerEmail(user);
+  const emoji = getUserAvatarEmoji(user);
+  const label = getUserDisplayLabel(user);
 
   return (
     <div

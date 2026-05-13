@@ -215,9 +215,9 @@ export default function AgentTaskQueue({
 
       const involvedAgentIds = Array.from(
         new Set(
-          data.tasks
+          ["admin", ...data.tasks
             .map((taskItem) => taskItem?.assignedAgentId)
-            .filter(Boolean),
+            .filter(Boolean)],
         ),
       );
 

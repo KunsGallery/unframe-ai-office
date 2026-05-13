@@ -8,6 +8,7 @@ import {
 import { useAgentMotion } from "../hooks/useAgentMotion";
 import AgentActivityPanel from "./AgentActivityPanel";
 import OfficeAgent from "./OfficeAgent";
+import OnlineUsers from "./OnlineUsers";
 import PlayerAvatar from "./PlayerAvatar";
 import { usePlayerMovement } from "../hooks/usePlayerMovement";
 
@@ -135,6 +136,7 @@ export default function OfficeMap({
   onSelectAgent,
   user,
   room,
+  onlineUsers = [],
   onMotionApiReady,
 }) {
   const activeAgent =
@@ -194,8 +196,9 @@ export default function OfficeMap({
   }, [activeAgentId, agentVisualStates, agents, nearestCharacterId]);
 
   const handleTaskRunStart = useCallback((taskItem) => {
+    const leadAgentId = "admin";
     const involvedAgentIds = Array.from(
-      new Set(["director", taskItem?.assignedAgentId].filter(Boolean)),
+      new Set([leadAgentId, taskItem?.assignedAgentId].filter(Boolean)),
     );
 
     if (involvedAgentIds.length > 1) {
@@ -215,8 +218,9 @@ export default function OfficeMap({
   }, [sendAgentToPoint, triggerCollaboration]);
 
   const handleTaskRunEnd = useCallback((taskItem) => {
+    const leadAgentId = "admin";
     const involvedAgentIds = Array.from(
-      new Set(["director", taskItem?.assignedAgentId].filter(Boolean)),
+      new Set([leadAgentId, taskItem?.assignedAgentId].filter(Boolean)),
     );
 
     if (!involvedAgentIds.length) {
@@ -467,6 +471,8 @@ export default function OfficeMap({
                 );
               })}
 
+              <OnlineUsers users={onlineUsers} />
+
               <PlayerAvatar
                 user={user}
                 position={position}
@@ -492,7 +498,7 @@ export default function OfficeMap({
           className="debug-collab-button"
           onClick={() =>
             triggerCollaboration(
-              ["director", "copy", "design"],
+              ["admin", "copy", "design"],
               "전시 홍보 플랜",
             )
           }

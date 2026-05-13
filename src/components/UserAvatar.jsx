@@ -1,10 +1,13 @@
-const OWNER_EMAIL = "gallerykuns@gmail.com";
+import {
+  getUserAvatarEmoji,
+  getUserDisplayLabel,
+  getUserRoleBadge,
+} from "../data/userToneProfiles";
 
 export default function UserAvatar({ user }) {
-  const isOwner = user?.email === OWNER_EMAIL;
-  const label = isOwner ? "대표님" : user?.displayName || "Staff";
-  const emoji = isOwner ? "🧑‍💼" : "👤";
-  const badge = isOwner ? "Director" : "Team";
+  const label = getUserDisplayLabel(user);
+  const emoji = getUserAvatarEmoji(user);
+  const badge = getUserRoleBadge(user);
 
   return (
     <div className="user-avatar-card">

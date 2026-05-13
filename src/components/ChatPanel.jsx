@@ -16,6 +16,7 @@ import {
   saveMessage,
   saveSummary,
 } from "../lib/chatMemory";
+import { buildAgentGreeting, getUserToneProfile } from "../data/userToneProfiles";
 import { canSendMessage, incrementLocalUsage } from "../lib/usageLimit";
 
 const DAILY_LIMIT_EXCEEDED_MESSAGE =
@@ -23,10 +24,10 @@ const DAILY_LIMIT_EXCEEDED_MESSAGE =
 const FALLBACK_ERROR_MESSAGE =
   "죄송합니다. 지금은 응답을 만들지 못했습니다. API 키나 서버 함수를 확인해주세요.";
 
-function getGreetingMessage(agent) {
+function getGreetingMessage(agent, user) {
   return {
     role: "assistant",
-    content: `안녕하세요. 저는 ${agent.name}입니다. ${agent.description}`,
+    content: buildAgentGreeting(agent, user),
   };
 }
 
@@ -94,6 +95,7 @@ export default function ChatPanel({
   const [lastUsage, setLastUsage] = useState(null);
   const [summary, setSummary] = useState("");
   const activeRequestRef = useRef(0);
+  const userToneProfile = useMemo(() => getUserToneProfile(user), [user]);
 
   const isOwner = OWNER_EMAILS.includes(user?.email || "");
   const effectiveMode = isOwner ? selectedMode : "economy";
@@ -118,7 +120,7 @@ export default function ChatPanel({
 
   useEffect(() => {
     let isCancelled = false;
-    const greetingMessage = getGreetingMessage(agent);
+    const greetingMessage = getGreetingMessage(agent, user);
     activeRequestRef.current += 1;
 
     async function hydrateMessages() {
@@ -159,7 +161,7 @@ export default function ChatPanel({
     return () => {
       isCancelled = true;
     };
-  }, [agent, roomId, user?.email]);
+  }, [agent, roomId, user]);
 
   const requestSummaryUpdate = async (sourceMessages, currentSummary) => {
     const persistedMessages = sourceMessages.filter(
@@ -224,7 +226,7 @@ export default function ChatPanel({
   };
 
   const handleClearChat = async () => {
-    const greetingMessage = getGreetingMessage(agent);
+    const greetingMessage = getGreetingMessage(agent, user);
     setMessages([greetingMessage]);
     setSummary("");
     setLastUsage(null);
@@ -415,6 +417,7 @@ export default function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={`${agent.name}에게 업무를 요청해보세요.`}
+          placeholder={`${userToneProfile.chatPlaceholderPrefix}, ${agent.name}에게 업무를 요청해보세요.`}
           rows={2}
           disabled={isHydrating}
           onKeyDown={(e) => {

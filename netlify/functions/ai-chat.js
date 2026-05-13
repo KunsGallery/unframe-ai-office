@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { brandContextInstructions } from "../../src/data/brandContext.js";
+import { buildToneInstruction } from "../../src/data/userToneProfiles.js";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -49,7 +51,7 @@ const AGENT_EXECUTION_META = {
     name: "Director AI",
     role: "전시 기획 디렉터",
     systemPrompt:
-      "You are Director AI for UNFRAME, an experimental art project space in Seoul. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, brand direction, artist positioning, and project structure.",
+      "You are Director AI for Kün's Gallery and UNFRAME. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, artist positioning, project structure, and long-term brand direction across both brands.",
   },
   copy: {
     name: "Copy AI",
@@ -61,7 +63,7 @@ const AGENT_EXECUTION_META = {
     name: "Design Prompt AI",
     role: "디자인 프롬프트 제작자",
     systemPrompt:
-      "You are Design Prompt AI for UNFRAME. Create high-end, modern, scrapbook/editorial visual prompts for AI image tools. Include layout, mood, color, typography, material, and composition details.",
+      "You are Design Prompt AI for Kün's Gallery and UNFRAME. Create detailed, production-ready Korean prompts for AI image tools. Always specify subject, art direction, framing, composition, materials, lighting, palette, typography, layout hierarchy, texture, camera cues, exclusions, and intended output usage. Aim for high-end editorial quality with experimental but usable direction.",
   },
   music: {
     name: "Music AI",
@@ -70,10 +72,10 @@ const AGENT_EXECUTION_META = {
       "You are Music AI for UNFRAME Playlist. Create Suno prompts, exhibition OST directions, and playlist concepts. Keep prompts practical, emotionally refined, and suitable for 3 to 5 minute full songs.",
   },
   admin: {
-    name: "Admin AI",
-    role: "운영 매니저",
+    name: "Manager AI",
+    role: "총괄 매니저",
     systemPrompt:
-      "You are Admin AI for UNFRAME. Organize tasks, schedules, checklists, emails, application workflows, and operational documents in a concise and actionable Korean style.",
+      "You are Manager AI for Kün's Gallery and UNFRAME. Support the CEO's work pattern, help break goals into task queues, decide which agent should own each task, keep project flow in context, lead meeting-room collaboration, and organize schedules, checklists, emails, and operations in concise Korean.",
   },
   archive: {
     name: "Archive AI",
@@ -259,12 +261,16 @@ function getUsagePayload(response, model, mode) {
   };
 }
 
-function buildChatInstructions(agentPrompt, memorySummary) {
+function buildSharedPromptContext(userEmail) {
+  return [brandContextInstructions, buildToneInstruction(userEmail)].join("\n\n");
+}
+
+function buildChatInstructions(agentPrompt, memorySummary, userEmail) {
   const summaryInstructions = memorySummary
     ? `\n\n이전 대화 요약:\n${memorySummary}\n\n이 요약을 참고하되, 최근 사용자의 요청을 우선한다.`
     : "";
 
-  return `${agentPrompt}${summaryInstructions}`;
+  return `${agentPrompt}\n\n${buildSharedPromptContext(userEmail)}${summaryInstructions}`;
 }
 
 function buildSummaryInstructions(agentPrompt, memorySummary) {
@@ -280,13 +286,16 @@ function buildSummaryInstructions(agentPrompt, memorySummary) {
     .join("\n\n");
 }
 
-function buildPlanInstructions() {
+function buildPlanInstructions(userEmail) {
   return [
-    "당신은 UNFRAME AI OFFICE의 Manager AI다.",
+    "당신은 UNFRAME AI OFFICE의 총괄 매니저 AI다.",
+    buildSharedPromptContext(userEmail),
     "사용자의 고수준 목표를 3개에서 6개의 실행 가능한 작업으로 분해한다.",
     "각 작업은 title, description, assignedAgentId, priority, expectedOutput을 반드시 포함한다.",
     `assignedAgentId는 다음 중 하나만 사용한다: ${ALLOWED_AGENT_IDS.join(", ")}.`,
     `priority는 다음 중 하나만 사용한다: ${ALLOWED_PRIORITIES.join(", ")}.`,
+    "대표 또는 직원의 업무 맥락을 이해한 내부 매니저처럼 우선순위와 담당자를 배분한다.",
+    "summary는 첫 문장에 반드시 호칭을 자연스럽게 포함한다.",
     "작업은 실무에서 바로 실행 가능한 단위로 작성한다.",
     "한국어로 작성한다.",
     "반드시 JSON 객체만 출력한다. 마크다운 코드펜스나 설명 문장은 출력하지 않는다.",
@@ -311,10 +320,12 @@ function buildPlanRequest({ goal, roomName, agentIds }) {
   ].join("\n\n");
 }
 
-function buildExecutionInstructions(agentMeta, memorySummary) {
+function buildExecutionInstructions(agentMeta, memorySummary, userEmail) {
   return [
     agentMeta.systemPrompt,
+    buildSharedPromptContext(userEmail),
     "이번 응답은 작업 카드 실행 결과다.",
+    "첫 문장 또는 가장 자연스러운 첫 호흡에 반드시 호칭을 넣는다.",
     "실무에서 바로 붙여 쓸 수 있는 결과를 한국어로 작성한다.",
     "장황한 서론 없이 바로 결과를 제시한다.",
     "필요할 때만 짧은 섹션 제목이나 목록을 사용한다.",
@@ -527,7 +538,7 @@ async function handleChat({ agent, messages, memorySummary, userEmail, mode }) {
   const model = resolvedMode === "premium" ? PREMIUM_MODEL : DEFAULT_MODEL;
   const response = await openai.responses.create({
     model,
-    instructions: buildChatInstructions(agent.systemPrompt, safeSummary),
+    instructions: buildChatInstructions(agent.systemPrompt, safeSummary, userEmail),
     input: sanitizedMessages,
     max_output_tokens: MAX_OUTPUT_TOKENS,
   });
@@ -562,7 +573,7 @@ async function handlePlanTasks({
   const safeAgentIds = sanitizeAgents(agents);
   const response = await openai.responses.create({
     model: DEFAULT_MODEL,
-    instructions: buildPlanInstructions(),
+    instructions: buildPlanInstructions(userEmail),
     input: [
       {
         role: "user",
@@ -617,7 +628,7 @@ async function handleExecuteTask({
 
   const response = await openai.responses.create({
     model,
-    instructions: buildExecutionInstructions(agentMeta, safeSummary),
+    instructions: buildExecutionInstructions(agentMeta, safeSummary, userEmail),
     input: [
       ...sanitizedMessages,
       {

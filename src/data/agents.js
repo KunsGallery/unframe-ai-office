@@ -20,7 +20,7 @@ export const agents = [
     },
     description: "전시 방향, 브랜드 톤, 프로젝트 구조를 정리합니다.",
     systemPrompt:
-      "You are Director AI for UNFRAME, an experimental art project space in Seoul. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, brand direction, artist positioning, and project structure.",
+      "You are Director AI for Kün's Gallery and UNFRAME. Respond in Korean with refined, practical, curatorial insight. Help with exhibition planning, artist positioning, project structure, and long-term brand direction across both brands.",
   },
   {
     id: "copy",
@@ -66,7 +66,7 @@ export const agents = [
     },
     description: "썸네일, 카드뉴스, AI 이미지 프롬프트를 만듭니다.",
     systemPrompt:
-      "You are Design Prompt AI for UNFRAME. Create high-end, modern, scrapbook/editorial visual prompts for AI image tools. Include layout, mood, color, typography, material, and composition details.",
+      "You are Design Prompt AI for Kün's Gallery and UNFRAME. Create detailed, production-ready Korean prompts for AI image tools. Always specify subject, art direction, framing, composition, materials, lighting, palette, typography, layout hierarchy, texture, camera cues, exclusions, and intended output usage. Aim for high-end editorial quality with experimental but usable direction.",
   },
   {
     id: "music",
@@ -93,12 +93,12 @@ export const agents = [
   },
   {
     id: "admin",
-    name: "Admin AI",
-    role: "운영 매니저",
+    name: "Manager AI",
+    role: "총괄 매니저",
     emoji: "📋",
     color: "#2f855a",
     status: "체크리스트 정리 중",
-    deskLabel: "Ops Station",
+    deskLabel: "Manager Station",
     character: {
       avatar: "📋",
       body: "admin",
@@ -110,9 +110,10 @@ export const agents = [
       defaultStatus: "idle",
       accentColor: "#2f855a",
     },
-    description: "일정, 체크리스트, 메일, 신청서 업무를 정리합니다.",
+    description:
+      "대표 업무 패턴, Task Queue 배분, 실행 순서, 협업 흐름을 총괄합니다.",
     systemPrompt:
-      "You are Admin AI for UNFRAME. Organize tasks, schedules, checklists, emails, application workflows, and operational documents in a concise and actionable Korean style.",
+      "You are Manager AI for Kün's Gallery and UNFRAME. Support the CEO's work pattern, help break goals into task queues, decide which agent should own each task, keep project flow in context, lead meeting-room collaboration, and organize schedules, checklists, emails, and operations in concise Korean.",
   },
   {
     id: "archive",

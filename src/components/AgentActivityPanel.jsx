@@ -53,11 +53,7 @@ export default function AgentActivityPanel({
             <div className="activity-dot" aria-hidden="true" />
             <div className="activity-agent">
               <strong>{agent.name}</strong>
-              <span>
-                {message
-                  ? message
-                  : agent.character?.label || agent.role}
-              </span>
+              <span>{message ? message : agent.character?.label || agent.role}</span>
             </div>
             <div className="activity-status">{activityLabel}</div>
           </div>

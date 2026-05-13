@@ -9,6 +9,11 @@ import ChatPanel from "./components/ChatPanel";
 import OfficeMap from "./components/OfficeMap";
 import RoomSelector from "./components/RoomSelector";
 import SettingsPanel from "./components/SettingsPanel";
+import {
+  startPresence,
+  stopPresence,
+  subscribeOnlineUsers,
+} from "./lib/presence";
 import "./App.css";
 
 const allowedEmails = [
@@ -25,6 +30,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSideTab, setActiveSideTab] = useState("chat");
   const [motionApi, setMotionApi] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -43,6 +49,63 @@ export default function App() {
     return rooms.find((room) => room.id === activeRoomId) || rooms[0];
   }, [activeRoomId]);
 
+  const canUsePresence = Boolean(
+    user?.email && allowedEmails.includes(user.email) && activeRoom,
+  );
+  const visibleOnlineUsers = canUsePresence ? onlineUsers : [];
+
+  useEffect(() => {
+    if (!canUsePresence) {
+      return undefined;
+    }
+
+    void startPresence({
+      user,
+      room: activeRoom,
+    });
+
+    return undefined;
+  }, [activeRoom, canUsePresence, user]);
+
+  useEffect(() => {
+    if (!canUsePresence) {
+      return undefined;
+    }
+
+    return subscribeOnlineUsers({
+      roomId: activeRoom.id,
+      currentUserEmail: user.email,
+      onChange: setOnlineUsers,
+    });
+  }, [activeRoom?.id, canUsePresence, user?.email]);
+
+  useEffect(() => {
+    if (!user?.email || !allowedEmails.includes(user.email)) {
+      return undefined;
+    }
+
+    const handleBeforeUnload = () => {
+      void stopPresence({ user });
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      void stopPresence({ user });
+    };
+  }, [user]);
+
+  const handleSignOut = async () => {
+    try {
+      await stopPresence({ user });
+    } catch (error) {
+      console.error("Failed to stop presence before sign out", error);
+    }
+
+    await signOut(auth);
+  };
+
   if (!authReady) {
     return <div className="loading-screen">UNFRAME AI OFFICE 불러오는 중...</div>;
   }
@@ -58,7 +121,7 @@ export default function App() {
           <p className="eyebrow">ACCESS LIMITED</p>
           <h1>승인되지 않은 계정입니다.</h1>
           <p>{user.email}</p>
-          <button onClick={() => signOut(auth)}>다른 계정으로 로그인</button>
+          <button onClick={handleSignOut}>다른 계정으로 로그인</button>
         </div>
       </main>
     );
@@ -81,7 +144,7 @@ export default function App() {
           >
             ⚙️ Settings
           </button>
-          <button onClick={() => signOut(auth)}>나가기</button>
+          <button onClick={handleSignOut}>나가기</button>
         </div>
       </header>
 
@@ -99,6 +162,7 @@ export default function App() {
             onSelectAgent={setActiveAgentId}
             user={user}
             room={activeRoom}
+            onlineUsers={visibleOnlineUsers}
             onMotionApiReady={setMotionApi}
           />
         </section>

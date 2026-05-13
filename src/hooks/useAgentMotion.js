@@ -25,6 +25,8 @@ const COLLABORATION_PROTECTED_MODES = [
   "task",
 ];
 const DEFAULT_MOVE_TIMEOUT_MS = 6000;
+const COLLABORATION_ROAM_DELAY_MS = 2600;
+const COLLABORATION_STALE_TIMEOUT_MS = 12000;
 
 const POSITION_LIMITS = {
   minX: 8,
@@ -450,6 +452,14 @@ export function useAgentMotion({
     collaborationTokenRef.current = null;
   }, []);
 
+  const setRoamingCooldown = useCallback((agentIds = [], delayMs = 0) => {
+    const nextAvailableAt = Date.now() + delayMs;
+
+    agentIds.forEach((agentId) => {
+      roamAvailableAtRef.current[agentId] = nextAvailableAt;
+    });
+  }, []);
+
   const restoreAgentsToBaseState = useCallback(
     (agentIds = []) => {
       agentIds.forEach((agentId) => {
@@ -660,6 +670,47 @@ export function useAgentMotion({
     [activeAgentId, agentLookup, deskPositions, sendAgentToPoint],
   );
 
+  const releaseCollaborationAgents = useCallback(
+    async (agentIds = [], { clearSequence = true } = {}) => {
+      const safeAgentIds = Array.from(new Set(agentIds.filter(Boolean)));
+
+      if (!safeAgentIds.length) {
+        if (clearSequence) {
+          clearCollaboration();
+        }
+
+        return;
+      }
+
+      if (clearSequence) {
+        clearCollaboration();
+      }
+
+      setRoamingCooldown(safeAgentIds, COLLABORATION_ROAM_DELAY_MS);
+
+      await Promise.allSettled(
+        safeAgentIds.map((agentId) =>
+          sendAgentToDesk(agentId, {
+            reason: "collaboration-end",
+            onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
+            onArriveMessage: "",
+            onArriveMode: "base",
+            stayMs: COLLABORATION_ROAM_DELAY_MS,
+          }),
+        ),
+      );
+
+      restoreAgentsToBaseState(safeAgentIds);
+    },
+    [
+      activeAgentId,
+      clearCollaboration,
+      restoreAgentsToBaseState,
+      sendAgentToDesk,
+      setRoamingCooldown,
+    ],
+  );
+
   const pickRoamingTarget = useCallback(
     (agentId) => {
       const roamingPreset = AGENT_BEHAVIOR_PRESETS.officeRoaming;
@@ -747,6 +798,18 @@ export function useAgentMotion({
       const isActiveSequence = () => collaborationTokenRef.current === token;
       const wait = (ms) =>
         waitFor(ms, (timerId) => registerCollaborationHandle(timerId));
+
+      const staleFallbackTimer = window.setTimeout(() => {
+        if (!isActiveSequence()) {
+          return;
+        }
+
+        void releaseCollaborationAgents(safeAgentIds, {
+          clearSequence: true,
+        });
+      }, COLLABORATION_STALE_TIMEOUT_MS);
+
+      registerCollaborationHandle(staleFallbackTimer);
 
       void (async () => {
         if (!isActiveSequence()) {
@@ -859,20 +922,9 @@ export function useAgentMotion({
           return;
         }
 
-        clearCollaboration();
-
-        await Promise.allSettled(
-          safeAgentIds.map((agentId) =>
-            sendAgentToDesk(agentId, {
-              reason: "collaboration-end",
-              onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
-              onArriveMessage: "",
-              onArriveMode: "base",
-            }),
-          ),
-        );
-
-        restoreAgentsToBaseState(safeAgentIds);
+        await releaseCollaborationAgents(safeAgentIds, {
+          clearSequence: true,
+        });
 
         if (import.meta.env.DEV) {
           console.debug("[collaboration end]", safeAgentIds);
@@ -880,11 +932,9 @@ export function useAgentMotion({
       })();
     },
     [
-      activeAgentId,
       clearCollaboration,
       registerCollaborationHandle,
-      restoreAgentsToBaseState,
-      sendAgentToDesk,
+      releaseCollaborationAgents,
       sendAgentToPoint,
       updateAgentVisualState,
     ],
@@ -894,22 +944,11 @@ export function useAgentMotion({
     (agentIds = []) => {
       const safeAgentIds = Array.from(new Set(agentIds.filter(Boolean)));
 
-      clearCollaboration();
-
-      return Promise.allSettled(
-        safeAgentIds.map((agentId) =>
-          sendAgentToDesk(agentId, {
-            reason: "collaboration-end",
-            onArriveStatus: agentId === activeAgentId ? "talking" : "idle",
-            onArriveMessage: "",
-            onArriveMode: "base",
-          }),
-        ),
-      ).finally(() => {
-        restoreAgentsToBaseState(safeAgentIds);
+      return releaseCollaborationAgents(safeAgentIds, {
+        clearSequence: true,
       });
     },
-    [activeAgentId, clearCollaboration, restoreAgentsToBaseState, sendAgentToDesk],
+    [releaseCollaborationAgents],
   );
 
   useEffect(() => {
@@ -1050,6 +1089,42 @@ export function useAgentMotion({
     pickRoamingTarget,
     sendAgentToPoint,
   ]);
+
+  useEffect(() => {
+    const recoveryTimer = window.setInterval(() => {
+      if (collaborationRef.current) {
+        return;
+      }
+
+      const staleAgentIds = agents
+        .filter((agent) => {
+          const currentState = visualStatesRef.current[agent.id];
+
+          return (
+            !currentState?.isMoving &&
+            [
+              "collaboration-moving",
+              "collaboration-ready",
+              "collaboration",
+              "coordination",
+            ].includes(currentState?.mode)
+          );
+        })
+        .map((agent) => agent.id);
+
+      if (!staleAgentIds.length) {
+        return;
+      }
+
+      void releaseCollaborationAgents(staleAgentIds, {
+        clearSequence: false,
+      });
+    }, 2200);
+
+    return () => {
+      window.clearInterval(recoveryTimer);
+    };
+  }, [agents, releaseCollaborationAgents]);
 
   useEffect(() => {
     if (!activeAgentId || collaborationRef.current?.agentIds.includes(activeAgentId)) {
