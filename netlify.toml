@@ -7,3 +7,8 @@
   command = "npm run dev"
   port = 8888
   targetPort = 5173
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"

@@ -117,6 +117,163 @@ service cloud.firestore {
         );
     }
 
+    function ownsExistingTask() {
+      return resource.data.userEmail is string &&
+        resource.data.userEmail == request.auth.token.email;
+    }
+
+    function ownsIncomingTask() {
+      return request.resource.data.userEmail is string &&
+        request.resource.data.userEmail == request.auth.token.email;
+    }
+
+    function isAllowedTaskAgent(agentId) {
+      return agentId == "director" ||
+        agentId == "copy" ||
+        agentId == "design" ||
+        agentId == "music" ||
+        agentId == "admin" ||
+        agentId == "archive";
+    }
+
+    function isAllowedTaskStatus(status) {
+      return status == "planned" ||
+        status == "running" ||
+        status == "completed" ||
+        status == "failed" ||
+        status == "archived";
+    }
+
+    function isAllowedTaskPriority(priority) {
+      return priority == "low" ||
+        priority == "normal" ||
+        priority == "high";
+    }
+
+    function isValidOptionalTaskTime(value) {
+      return value == null ||
+        value is timestamp ||
+        (value is string && value.size() <= 40);
+    }
+
+    function isValidQueueMeta(roomId, userSafeKey) {
+      return isAllowedRoom(roomId) &&
+        userSafeKey.matches('^[a-z0-9_]+$') &&
+        request.resource.data.keys().hasAll([
+          "userEmail",
+          "roomId",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "ownerEmail",
+          "userEmail",
+          "roomId",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.userEmail is string &&
+        isAllowedEmail(request.resource.data.userEmail) &&
+        request.resource.data.roomId == roomId &&
+        (
+          !request.resource.data.keys().hasAny(["ownerEmail"]) ||
+          (
+            request.resource.data.ownerEmail is string &&
+            isAllowedEmail(request.resource.data.ownerEmail)
+          )
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["createdAt"]) ||
+          request.resource.data.createdAt is timestamp
+        ) &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    function isValidTaskData(roomId) {
+      return isAllowedRoom(roomId) &&
+        request.resource.data.keys().hasAll([
+          "title",
+          "description",
+          "assignedAgentId",
+          "status",
+          "priority",
+          "goal",
+          "planId",
+          "roomId",
+          "userEmail",
+          "createdAt",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "title",
+          "description",
+          "assignedAgentId",
+          "status",
+          "priority",
+          "goal",
+          "planId",
+          "roomId",
+          "userEmail",
+          "ownerEmail",
+          "expectedOutput",
+          "result",
+          "errorMessage",
+          "usage",
+          "mode",
+          "sortOrder",
+          "createdAt",
+          "updatedAt",
+          "executedAt",
+          "completedAt",
+        ]) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.description is string &&
+        request.resource.data.description.size() <= 1200 &&
+        request.resource.data.goal is string &&
+        request.resource.data.goal.size() <= 3000 &&
+        request.resource.data.planId is string &&
+        request.resource.data.planId.size() <= 120 &&
+        request.resource.data.roomId == roomId &&
+        request.resource.data.userEmail is string &&
+        isAllowedEmail(request.resource.data.userEmail) &&
+        (
+          !request.resource.data.keys().hasAny(["ownerEmail"]) ||
+          (
+            request.resource.data.ownerEmail is string &&
+            isAllowedEmail(request.resource.data.ownerEmail)
+          )
+        ) &&
+        isAllowedTaskAgent(request.resource.data.assignedAgentId) &&
+        isAllowedTaskStatus(request.resource.data.status) &&
+        isAllowedTaskPriority(request.resource.data.priority) &&
+        request.resource.data.get("expectedOutput", "") is string &&
+        request.resource.data.get("expectedOutput", "").size() <= 600 &&
+        request.resource.data.get("result", "") is string &&
+        request.resource.data.get("result", "").size() <= 12000 &&
+        request.resource.data.get("errorMessage", "") is string &&
+        request.resource.data.get("errorMessage", "").size() <= 500 &&
+        (
+          !request.resource.data.keys().hasAny(["usage"]) ||
+          request.resource.data.usage == null ||
+          request.resource.data.usage is map
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["mode"]) ||
+          request.resource.data.mode == null ||
+          request.resource.data.mode == "economy" ||
+          request.resource.data.mode == "premium"
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(["sortOrder"]) ||
+          request.resource.data.sortOrder is int
+        ) &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.updatedAt is timestamp &&
+        isValidOptionalTaskTime(request.resource.data.get("executedAt", null)) &&
+        isValidOptionalTaskTime(request.resource.data.get("completedAt", null));
+    }
+
     match /unframeChatRooms/{roomId} {
       allow read, write: if false;
 
@@ -146,6 +303,52 @@ service cloud.firestore {
           allow update: if false;
 
           allow delete: if isAllowedStaff() && canAccessParentChat(roomId, chatId);
+        }
+      }
+    }
+
+    match /unframeTaskRooms/{roomId} {
+      allow read, write: if false;
+
+      match /queues/{userSafeKey} {
+        allow get: if isAllowedRoom(roomId) && isAllowedStaff() && (isOwner() || ownsExistingTask());
+        allow list: if false;
+
+        allow create: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsIncomingTask()) &&
+          isValidQueueMeta(roomId, userSafeKey);
+
+        allow update: if isAllowedRoom(roomId) && isAllowedStaff() &&
+          (isOwner() || ownsExistingTask()) &&
+          (isOwner() || ownsIncomingTask()) &&
+          isValidQueueMeta(roomId, userSafeKey);
+
+        allow delete: if false;
+
+        match /tasks/{taskId} {
+          allow get: if isAllowedRoom(roomId) && isAllowedStaff() &&
+            (isOwner() || ownsExistingTask());
+
+          allow list: if isAllowedRoom(roomId) && isAllowedStaff() &&
+            (
+              isOwner() ||
+              (
+                exists(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)) &&
+                get(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)).data.userEmail is string &&
+                get(/databases/$(database)/documents/unframeTaskRooms/$(roomId)/queues/$(userSafeKey)).data.userEmail == request.auth.token.email
+              )
+            );
+
+          allow create: if isAllowedRoom(roomId) && isAllowedStaff() &&
+            (isOwner() || ownsIncomingTask()) &&
+            isValidTaskData(roomId);
+
+          allow update: if isAllowedRoom(roomId) && isAllowedStaff() &&
+            (isOwner() || ownsExistingTask()) &&
+            (isOwner() || ownsIncomingTask()) &&
+            isValidTaskData(roomId);
+
+          allow delete: if false;
         }
       }
     }

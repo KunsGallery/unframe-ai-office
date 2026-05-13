@@ -30,6 +30,10 @@ export default function AgentActivityPanel({
           activityLabel = "회의실 이동 중";
         } else if (mode === "collaboration") {
           activityLabel = "협업 중";
+        } else if (mode === "task" && isMoving) {
+          activityLabel = "작업 위치로 이동 중";
+        } else if (mode === "task") {
+          activityLabel = "작업 수행 중";
         } else if (mode === "coordination" && isMoving) {
           activityLabel = "팀 호출 중";
         } else if (mode === "coordination") {

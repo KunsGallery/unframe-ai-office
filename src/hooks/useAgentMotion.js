@@ -21,6 +21,7 @@ const COLLAB_INVITE_BUBBLES = [
   "회의실로 모일게요",
   "잠깐 논의해요",
 ];
+
 const POSITION_LIMITS = {
   minX: 8,
   maxX: 92,
@@ -32,10 +33,12 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function clampPoint(point) {
+function clampPoint(point, fallback = { x: 50, y: 55 }) {
+  const safePoint = point || fallback;
+
   return {
-    x: clamp(point.x, POSITION_LIMITS.minX, POSITION_LIMITS.maxX),
-    y: clamp(point.y, POSITION_LIMITS.minY, POSITION_LIMITS.maxY),
+    x: clamp(safePoint.x, POSITION_LIMITS.minX, POSITION_LIMITS.maxX),
+    y: clamp(safePoint.y, POSITION_LIMITS.minY, POSITION_LIMITS.maxY),
   };
 }
 
@@ -137,6 +140,39 @@ function waitFor(ms, registerTimer) {
     const timerId = window.setTimeout(resolve, ms);
     registerTimer(timerId);
   });
+}
+
+function getMeetingSeats() {
+  const seats = MEETING_ROOM?.seats || {};
+  const orderedSeats = [
+    seats.lead,
+    seats.left,
+    seats.right,
+    seats.bottom,
+    seats.topLeft,
+    seats.topRight,
+    seats.bottomLeft,
+    seats.bottomRight,
+    seats.center,
+  ].filter(Boolean);
+
+  if (orderedSeats.length) {
+    return orderedSeats;
+  }
+
+  return [
+    MEETING_ROOM?.entrance || { x: 50, y: 55 },
+    { x: 46, y: 55 },
+    { x: 54, y: 55 },
+    { x: 50, y: 60 },
+  ];
+}
+
+function getMeetingSeat(index) {
+  const seats = getMeetingSeats();
+  const baseSeat = seats[index % seats.length] || { x: 50, y: 55 };
+
+  return withOffset(baseSeat, 1.5, 1.5, 0);
 }
 
 export function useAgentMotion({
@@ -353,15 +389,10 @@ export function useAgentMotion({
             return;
           }
 
-          const stepDistance = Math.min(distance, targetEntry.speed * deltaSeconds);
-
-          if (stepDistance >= distance) {
-            next[agentId] = targetEntry.target;
-            arrivals.push(targetEntry);
-            delete targets[agentId];
-            hasChanges = true;
-            return;
-          }
+          const stepDistance = Math.min(
+            distance,
+            targetEntry.speed * deltaSeconds,
+          );
 
           next[agentId] = {
             x: currentPosition.x + (dx / distance) * stepDistance,
@@ -386,7 +417,9 @@ export function useAgentMotion({
       return;
     }
 
-    collaborationRef.current[type === "interval" ? "intervals" : "timeouts"].push(timerId);
+    collaborationRef.current[type === "interval" ? "intervals" : "timeouts"].push(
+      timerId,
+    );
   }, []);
 
   const clearCollaboration = useCallback(() => {
@@ -408,11 +441,16 @@ export function useAgentMotion({
 
   const sendAgentToPoint = useCallback(
     (agentId, point, options = {}) => {
+      if (!agentId || !point) {
+        return;
+      }
+
       const targetPoint = clampPoint(point);
       const currentPosition =
         positionsRef.current[agentId] ||
         deskPositions[agentId] ||
         targetPoint;
+
       const {
         speed = DEFAULT_MOVE_SPEED,
         status,
@@ -495,19 +533,19 @@ export function useAgentMotion({
       sendAgentToPoint(agentId, deskPoint, {
         speed:
           options.speed ||
-          (reason === "user-request" ? 18 : reason === "collaboration-end" ? 14 : 12),
+          (reason === "user-request"
+            ? 18
+            : reason === "collaboration-end"
+              ? 14
+              : 12),
         status:
           reason === "user-request"
             ? "returning"
             : options.status || baseStatus,
         message:
-          reason === "user-request"
-            ? "곧 갈게요"
-            : options.message ?? "",
+          reason === "user-request" ? "곧 갈게요" : options.message ?? "",
         mode:
-          reason === "user-request"
-            ? "returning"
-            : options.mode || "base",
+          reason === "user-request" ? "returning" : options.mode || "base",
         onArriveStatus: options.onArriveStatus || baseStatus,
         onArriveMessage:
           options.onArriveMessage !== undefined ? options.onArriveMessage : "",
@@ -525,8 +563,8 @@ export function useAgentMotion({
       const roamingPreset = AGENT_BEHAVIOR_PRESETS.officeRoaming;
       const roll = Math.random();
       const visitRoutes = AGENT_VISIT_ROUTES[agentId] || [];
-      const hallwayPoints = Object.values(MOTION_POINTS.hallway);
-      const loungePoints = Object.values(MOTION_POINTS.lounge);
+      const hallwayPoints = Object.values(MOTION_POINTS.hallway || {});
+      const loungePoints = Object.values(MOTION_POINTS.lounge || {});
 
       if (roll < roamingPreset.visitOtherDeskProbability && visitRoutes.length) {
         const targetAgentId = pickRandom(visitRoutes);
@@ -570,11 +608,7 @@ export function useAgentMotion({
         }
       }
 
-      if (
-        roll >
-          1 - roamingPreset.returnHomeProbability &&
-        deskPositions[agentId]
-      ) {
+      if (roll > 1 - roamingPreset.returnHomeProbability && deskPositions[agentId]) {
         return {
           point: withOffset(deskPositions[agentId], 2, 1.5, 0),
           speed: randomBetween(10, 11.5),
@@ -582,7 +616,7 @@ export function useAgentMotion({
       }
 
       return {
-        point: withOffset(MEETING_ROOM.entrance, 2, 2, 0),
+        point: withOffset(MEETING_ROOM.entrance || { x: 50, y: 55 }, 2, 2, 0),
         speed: randomBetween(10, 12),
       };
     },
@@ -591,34 +625,30 @@ export function useAgentMotion({
 
   const triggerCollaboration = useCallback(
     (agentIds, topic = "협업 플랜") => {
-      if (!agentIds.length) {
+      const safeAgentIds = Array.from(new Set(agentIds.filter(Boolean)));
+
+      if (!safeAgentIds.length) {
         return;
       }
 
       clearCollaboration();
+
       const token = Symbol("collaboration");
       collaborationTokenRef.current = token;
       collaborationRef.current = {
-        agentIds,
+        agentIds: safeAgentIds,
         topic,
         intervals: [],
         timeouts: [],
       };
 
       const isActiveSequence = () => collaborationTokenRef.current === token;
-      const wait = (ms) => waitFor(ms, (timerId) => registerCollaborationHandle(timerId));
-      const roomSeats = [
-        MEETING_ROOM.seats.lead,
-        MEETING_ROOM.seats.topLeft,
-        MEETING_ROOM.seats.topRight,
-        MEETING_ROOM.seats.bottomLeft,
-        MEETING_ROOM.seats.bottomRight,
-        MEETING_ROOM.seats.bottom,
-      ];
+      const wait = (ms) =>
+        waitFor(ms, (timerId) => registerCollaborationHandle(timerId));
 
       void (async () => {
-        const leadAgentId = agentIds[0];
-        const collaboratorIds = agentIds.slice(1);
+        const leadAgentId = safeAgentIds[0];
+        const collaboratorIds = safeAgentIds.slice(1);
 
         collaboratorIds.forEach((agentId) => {
           updateAgentVisualState(agentId, {
@@ -634,57 +664,62 @@ export function useAgentMotion({
             return;
           }
 
-          const invitePoint = withOffset(deskPositions[collaboratorId], 3, 2, 1);
-          const inviteBubble = pickRandom(COLLAB_INVITE_BUBBLES) || "회의실로 모일게요";
+          const collaboratorDesk = deskPositions[collaboratorId];
 
-          sendAgentToPoint(leadAgentId, invitePoint, {
-            status: "working",
-            message: inviteBubble,
-            mode: "coordination",
-            speed: 14,
-            onArriveStatus: "working",
-            onArriveMessage: inviteBubble,
-            onArriveMode: "coordination",
-            clearMessageAfterMs: 1700,
-          });
+          if (collaboratorDesk) {
+            const invitePoint = withOffset(collaboratorDesk, 3, 2, 1);
+            const inviteBubble =
+              pickRandom(COLLAB_INVITE_BUBBLES) || "회의실로 모일게요";
 
-          updateAgentVisualState(collaboratorId, {
-            status: "thinking",
-            message: "회의실에서 볼게요",
-            isMoving: false,
-            mode: "coordination",
-          });
+            sendAgentToPoint(leadAgentId, invitePoint, {
+              status: "working",
+              message: inviteBubble,
+              mode: "coordination",
+              speed: 14,
+              onArriveStatus: "working",
+              onArriveMessage: inviteBubble,
+              onArriveMode: "coordination",
+              clearMessageAfterMs: 1700,
+            });
 
-          await wait(randomIntBetween(1200, 1600));
+            updateAgentVisualState(collaboratorId, {
+              status: "thinking",
+              message: "회의실에서 볼게요",
+              isMoving: false,
+              mode: "coordination",
+            });
+
+            await wait(randomIntBetween(1300, 1700));
+          }
         }
 
         if (!isActiveSequence()) {
           return;
         }
 
-        agentIds.forEach((agentId, index) => {
-          const seatPoint = roomSeats[index] || roomSeats[roomSeats.length - 1];
+        safeAgentIds.forEach((agentId, index) => {
+          const seatPoint = getMeetingSeat(index);
           const collaborationMessages = getCollaborationMessages(agentId, topic);
           const isLead = index === 0;
 
           sendAgentToPoint(agentId, seatPoint, {
             status: isLead ? "talking" : "working",
-            message: isLead ? "회의실에서 정리할게요" : "",
+            message: isLead ? "회의실에서 정리할게요" : "회의실 이동 중",
             mode: "collaboration",
-            speed: 14,
+            speed: 16,
             onArriveStatus: isLead ? "talking" : "working",
             onArriveMessage: isLead ? collaborationMessages[0] : "",
             onArriveMode: "collaboration",
           });
         });
 
-        await wait(randomIntBetween(1400, 1800));
+        await wait(randomIntBetween(1700, 2200));
 
         if (!isActiveSequence()) {
           return;
         }
 
-        agentIds.forEach((agentId, index) => {
+        safeAgentIds.forEach((agentId, index) => {
           const messages = getCollaborationMessages(agentId, topic);
           const statusCycle = ["talking", "working", "thinking"];
           const initialStatus = statusCycle[index % statusCycle.length];
@@ -728,7 +763,7 @@ export function useAgentMotion({
 
         clearCollaboration();
 
-        agentIds.forEach((agentId) => {
+        safeAgentIds.forEach((agentId) => {
           sendAgentToDesk(agentId, {
             reason: "collaboration-end",
             onArriveStatus: agentId === activeAgentId ? "talking" : "idle",

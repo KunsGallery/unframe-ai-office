@@ -3524,3 +3524,40 @@ button {
     text-align: center;
   }
 }
+
+.office-map-and-tasks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.office-map-main {
+  min-width: 0;
+}
+
+.task-queue-sidebar {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  align-self: start;
+  z-index: 12;
+}
+
+.task-queue-sidebar .agent-task-queue {
+  margin: 0;
+  height: auto;
+}
+
+@media (max-width: 1180px) {
+  .office-map-and-tasks {
+    grid-template-columns: 1fr;
+  }
+
+  .task-queue-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
