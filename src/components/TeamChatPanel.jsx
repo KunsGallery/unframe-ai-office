@@ -28,6 +28,7 @@ const CHAT_SETTINGS_DEFAULTS = {
   bubbleColor: "#004aad",
   bubbleShape: "round",
   bubbleDecoration: "none",
+  bubbleDecorationPosition: "left",
   chatBackground: "#f4f7fc",
   fontFamily: "system",
   notificationSound: "soft",
@@ -38,10 +39,12 @@ const SOUND_OPTIONS = [
   { id: "pop", label: "가벼운 톡" },
 ];
 const BUBBLE_COLORS = [
-  { value: "#004aad", label: "오피스 블루" },
-  { value: "#6d4aff", label: "라벤더" },
-  { value: "#16845b", label: "민트 그린" },
-  { value: "#d35b28", label: "코랄" },
+  { value: "#004aad", text: "#ffffff", label: "오피스 블루" },
+  { value: "#554a91", text: "#ffffff", label: "픽셀 라벤더" },
+  { value: "#e89aad", text: "#3b2030", label: "픽셀 핑크" },
+  { value: "#f8d98b", text: "#4d3213", label: "픽셀 옐로" },
+  { value: "#16845b", text: "#ffffff", label: "민트 그린" },
+  { value: "#d35b28", text: "#ffffff", label: "코랄" },
 ];
 const CHAT_BACKGROUNDS = [
   { value: "#f4f7fc", label: "아이스 블루" },
@@ -144,10 +147,17 @@ export default function TeamChatPanel({
       oscillator.frequency.setValueAtTime(soundConfig.start, context.currentTime);
       oscillator.frequency.exponentialRampToValueAtTime(soundConfig.end, context.currentTime + soundConfig.duration * 0.45);
       gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.1 * notificationVolume, context.currentTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.32 * notificationVolume, context.currentTime + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + soundConfig.duration);
       oscillator.connect(gain);
-      gain.connect(context.destination);
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-24, context.currentTime);
+      compressor.knee.setValueAtTime(12, context.currentTime);
+      compressor.ratio.setValueAtTime(6, context.currentTime);
+      compressor.attack.setValueAtTime(0.003, context.currentTime);
+      compressor.release.setValueAtTime(0.2, context.currentTime);
+      gain.connect(compressor);
+      compressor.connect(context.destination);
       oscillator.start();
       oscillator.stop(context.currentTime + soundConfig.duration + 0.02);
     } catch {
@@ -164,6 +174,7 @@ export default function TeamChatPanel({
   };
 
   const selectedFont = FONT_OPTIONS.find((option) => option.value === chatSettings.fontFamily) || FONT_OPTIONS[0];
+  const selectedBubbleColor = BUBBLE_COLORS.find((option) => option.value === chatSettings.bubbleColor) || BUBBLE_COLORS[0];
 
   useEffect(() => {
     return subscribeTeamMessages({
@@ -309,10 +320,12 @@ export default function TeamChatPanel({
       style={{
         "--team-chat-bg": chatSettings.chatBackground,
         "--team-chat-mine": chatSettings.bubbleColor,
+        "--team-chat-mine-text": selectedBubbleColor.text,
         "--team-chat-font": selectedFont.css,
-        "--team-chat-bubble-radius": chatSettings.bubbleShape === "square" ? "8px" : chatSettings.bubbleShape === "soft" ? "20px" : "14px",
+        "--team-chat-bubble-radius": chatSettings.bubbleShape === "square" || chatSettings.bubbleShape === "pixel" ? "4px" : chatSettings.bubbleShape === "soft" ? "20px" : "14px",
       }}
       data-bubble-decoration={chatSettings.bubbleDecoration}
+      data-bubble-decoration-position={chatSettings.bubbleDecorationPosition}
       onPointerDown={() => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (AudioContext && !audioContextRef.current) audioContextRef.current = new AudioContext();
@@ -403,12 +416,20 @@ export default function TeamChatPanel({
               <option value="round">기본 둥근형</option>
               <option value="soft">더 둥글게</option>
               <option value="square">각진 카드형</option>
+              <option value="pixel">픽셀 말풍선</option>
             </select>
           </label>
           <label className="team-chat-setting-field">
             <span>말풍선 장식</span>
             <select value={chatSettings.bubbleDecoration} onChange={(event) => updateChatSetting("bubbleDecoration", event.target.value)}>
               {BUBBLE_DECORATIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="team-chat-setting-field">
+            <span>장식 위치</span>
+            <select value={chatSettings.bubbleDecorationPosition} onChange={(event) => updateChatSetting("bubbleDecorationPosition", event.target.value)}>
+              <option value="left">왼쪽 위 (픽셀 스타일)</option>
+              <option value="right">오른쪽 위</option>
             </select>
           </label>
           <label className="team-chat-setting-field">

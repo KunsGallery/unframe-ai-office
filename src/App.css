@@ -1519,14 +1519,20 @@ button {
   position: relative;
   border-radius: var(--team-chat-bubble-radius, 14px) var(--team-chat-bubble-radius, 14px) 4px var(--team-chat-bubble-radius, 14px);
   background: var(--team-chat-mine, #004aad);
-  color: #fff;
+  color: var(--team-chat-mine-text, #fff);
+}
+
+.team-chat-panel[data-bubble-decoration="carrot"] .team-message.mine p,
+.team-chat-panel[data-bubble-decoration="bone"] .team-message.mine p {
+  border: 2px solid color-mix(in srgb, var(--team-chat-mine, #004aad) 72%, #17213a);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--team-chat-mine, #004aad) 26%, #17213a);
 }
 
 .team-chat-panel[data-bubble-decoration="carrot"] .team-message.mine p::after,
 .team-chat-panel[data-bubble-decoration="bone"] .team-message.mine p::after {
   position: absolute;
-  right: -8px;
-  top: -14px;
+  left: -9px;
+  top: -12px;
   padding: 1px 3px;
   border-radius: 999px;
   background: #fff;
@@ -1543,6 +1549,27 @@ button {
 .team-chat-panel[data-bubble-decoration="bone"] .team-message.mine p::after {
   content: "🦴";
   transform: rotate(-14deg);
+}
+
+.team-chat-panel[data-bubble-decoration-position="right"] .team-message.mine p::after {
+  right: -9px;
+  left: auto;
+}
+
+.team-chat-panel[data-bubble-decoration="carrot"] .team-message.mine p::before,
+.team-chat-panel[data-bubble-decoration="bone"] .team-message.mine p::before {
+  content: "";
+  position: absolute;
+  left: 58%;
+  bottom: -7px;
+  z-index: 0;
+  width: 11px;
+  height: 11px;
+  border-right: 2px solid color-mix(in srgb, var(--team-chat-mine, #004aad) 72%, #17213a);
+  border-bottom: 2px solid color-mix(in srgb, var(--team-chat-mine, #004aad) 72%, #17213a);
+  background: var(--team-chat-mine, #004aad);
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .pixel-player-speech-bubble,
