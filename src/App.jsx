@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import { agents } from "./data/agents";
 import { rooms } from "./data/rooms";
+import { subscribeTeamMessages } from "./lib/teamChat";
 import AgentTaskQueue from "./components/AgentTaskQueue";
 import LoginScreen from "./components/LoginScreen";
 import ChatPanel from "./components/ChatPanel";
+import TeamChatPanel from "./components/TeamChatPanel";
 import OfficeMap from "./components/OfficeMap";
 import RoomSelector from "./components/RoomSelector";
 import SettingsPanel from "./components/SettingsPanel";
@@ -21,15 +23,62 @@ const allowedEmails = [
   // "staff@example.com",
 ];
 
+function playTeamNotification(audioContextRef) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const context = audioContextRef.current || new AudioContext();
+    audioContextRef.current = context;
+    void context.resume();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(740, context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(980, context.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+  } catch {
+    // Autoplay policies may block sound until a user gesture.
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [activeAgentId, setActiveAgentId] = useState("director");
-  const [activeRoomId, setActiveRoomId] = useState("general");
+  const initialRoomId = new URLSearchParams(window.location.search).get("room");
+  const [activeRoomId, setActiveRoomId] = useState(
+    rooms.some((room) => room.id === initialRoomId) ? initialRoomId : "general",
+  );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeSideTab, setActiveSideTab] = useState("chat");
+  const [activeSideTab, setActiveSideTab] = useState("team-chat");
   const [motionApi, setMotionApi] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
+  const [latestTeamMessage, setLatestTeamMessage] = useState(null);
+  const knownTeamMessageIdsRef = useRef(new Set());
+  const teamAudioContextRef = useRef(null);
+  const sideTabs = ["team-chat", "chat", "tasks"];
+
+  const handleSideTabKeyDown = (event, tabId) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+
+    event.preventDefault();
+    const currentIndex = sideTabs.indexOf(tabId);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? sideTabs.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + sideTabs.length) % sideTabs.length;
+    const nextTab = sideTabs[nextIndex];
+    setActiveSideTab(nextTab);
+    requestAnimationFrame(() => document.getElementById(`side-tab-${nextTab}`)?.focus());
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -64,6 +113,27 @@ export default function App() {
       onChange: setOnlineUsers,
     });
   }, [activeRoom?.id, canUsePresence, user?.email]);
+
+  useEffect(() => {
+    if (!user?.email || !allowedEmails.includes(user.email)) return undefined;
+
+    knownTeamMessageIdsRef.current = new Set();
+    return subscribeTeamMessages({
+      roomId: activeRoomId,
+      onChange: (nextMessages) => {
+        setLatestTeamMessage(nextMessages.at(-1) || null);
+        const receivedNewMessage = nextMessages.some(
+          (message) =>
+            !knownTeamMessageIdsRef.current.has(message.id) &&
+            message.senderEmail !== user.email,
+        );
+        if (activeSideTab !== "team-chat" && knownTeamMessageIdsRef.current.size && receivedNewMessage) {
+          playTeamNotification(teamAudioContextRef);
+        }
+        knownTeamMessageIdsRef.current = new Set(nextMessages.map((message) => message.id));
+      },
+    });
+  }, [activeRoomId, activeSideTab, user?.email]);
 
   useEffect(() => {
     if (!user?.email || !allowedEmails.includes(user.email)) {
@@ -113,8 +183,28 @@ export default function App() {
     );
   }
 
+  if (new URLSearchParams(window.location.search).get("chat") === "popout") {
+    return (
+      <main className="chat-popout-shell">
+        <TeamChatPanel
+          user={user}
+          roomId={activeRoomId}
+          roomName={activeRoom.name}
+        />
+      </main>
+    );
+  }
+
   return (
-    <main className="office-shell">
+    <main
+      className="office-shell"
+      onPointerDown={() => {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext && !teamAudioContextRef.current) {
+          teamAudioContextRef.current = new AudioContext();
+        }
+      }}
+    >
       <header className="office-header">
         <div>
           <p className="eyebrow">UNFRAME AI OFFICE</p>
@@ -150,6 +240,7 @@ export default function App() {
             user={user}
             room={activeRoom}
             onlineUsers={visibleOnlineUsers}
+            latestTeamMessage={latestTeamMessage}
             onMotionApiReady={setMotionApi}
           />
         </section>
@@ -159,27 +250,59 @@ export default function App() {
             <button
               type="button"
               role="tab"
-              aria-selected={activeSideTab === "chat"}
-              className={activeSideTab === "chat" ? "active" : ""}
-              onClick={() => setActiveSideTab("chat")}
+              id="side-tab-team-chat"
+              aria-controls="side-tab-panel"
+              aria-selected={activeSideTab === "team-chat"}
+              tabIndex={activeSideTab === "team-chat" ? 0 : -1}
+              className={activeSideTab === "team-chat" ? "active" : ""}
+              onClick={() => setActiveSideTab("team-chat")}
+              onKeyDown={(event) => handleSideTabKeyDown(event, "team-chat")}
             >
-              채팅
+              직원 채팅
             </button>
             <button
               type="button"
               role="tab"
+              id="side-tab-chat"
+              aria-controls="side-tab-panel"
+              aria-selected={activeSideTab === "chat"}
+              tabIndex={activeSideTab === "chat" ? 0 : -1}
+              className={activeSideTab === "chat" ? "active" : ""}
+              onClick={() => setActiveSideTab("chat")}
+              onKeyDown={(event) => handleSideTabKeyDown(event, "chat")}
+            >
+              AI 채팅
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="side-tab-tasks"
+              aria-controls="side-tab-panel"
               aria-selected={activeSideTab === "tasks"}
+              tabIndex={activeSideTab === "tasks" ? 0 : -1}
               className={activeSideTab === "tasks" ? "active" : ""}
               onClick={() => setActiveSideTab("tasks")}
+              onKeyDown={(event) => handleSideTabKeyDown(event, "tasks")}
             >
               업무 보드
             </button>
           </div>
 
           <div
+            id="side-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`side-tab-${activeSideTab}`}
             className={`side-panel-content ${activeSideTab === "tasks" ? "tasks" : "chat"}`}
           >
-            {activeSideTab === "chat" ? (
+            {activeSideTab === "team-chat" ? (
+              <TeamChatPanel
+                key={activeRoomId}
+                user={user}
+                roomId={activeRoomId}
+                roomName={activeRoom.name}
+                onLatestMessage={setLatestTeamMessage}
+              />
+            ) : activeSideTab === "chat" ? (
               <ChatPanel
                 key={`${activeRoomId}-${activeAgent.id}`}
                 agent={activeAgent}

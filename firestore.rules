@@ -121,6 +121,32 @@ service cloud.firestore {
         );
     }
 
+    function isValidTeamMessageCreate(roomId) {
+      return isAllowedRoom(roomId) &&
+        request.resource.data.keys().hasAll([
+          "content",
+          "senderEmail",
+          "senderName",
+          "createdAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "content",
+          "senderEmail",
+          "senderName",
+          "createdAt",
+        ]) &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() > 0 &&
+        request.resource.data.content.size() <= 2000 &&
+        request.resource.data.senderEmail is string &&
+        request.resource.data.senderEmail == userEmail() &&
+        isAllowedEmail(request.resource.data.senderEmail) &&
+        request.resource.data.senderName is string &&
+        request.resource.data.senderName.size() > 0 &&
+        request.resource.data.senderName.size() <= 80 &&
+        request.resource.data.createdAt is timestamp;
+    }
+
     function ownsExistingTask() {
       return resource.data.userEmail is string &&
         resource.data.userEmail == userEmail();
@@ -424,6 +450,16 @@ service cloud.firestore {
 
           allow delete: if isAllowedStaff() && canAccessParentChat(roomId, chatId);
         }
+      }
+    }
+
+    match /unframeTeamChats/{roomId} {
+      allow read, write: if false;
+
+      match /messages/{messageId} {
+        allow get, list: if isAllowedRoom(roomId) && isAllowedStaff();
+        allow create: if isAllowedStaff() && isValidTeamMessageCreate(roomId);
+        allow update, delete: if false;
       }
     }
 

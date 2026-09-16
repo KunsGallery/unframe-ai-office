@@ -41,11 +41,15 @@ function getRemoteUserVariant(userEmail) {
   return "default";
 }
 
-export default function OnlineUsers({ users = [] }) {
+export default function OnlineUsers({ users = [], latestMessage = null }) {
   return users.map((user, index) => {
     const position = getDisplayPosition(user, index);
     const label = user?.avatarLabel || getUserDisplayLabel(user?.userEmail);
     const variant = getRemoteUserVariant(user?.userEmail);
+    const isMessageSender = latestMessage?.senderEmail === user?.userEmail;
+    const sprite = isOwnerEmail(user?.userEmail)
+      ? "/assets/chat-characters/owner-puppy.png"
+      : "/assets/chat-characters/staff-bunny.png";
 
     return (
       <div
@@ -54,10 +58,12 @@ export default function OnlineUsers({ users = [] }) {
         style={{ left: `${position.x}%`, top: `${position.y}%` }}
         title={user?.displayName || user?.userEmail || label}
       >
+        {isMessageSender && (
+          <div className="remote-user-speech-bubble">{latestMessage.content}</div>
+        )}
         <div className="remote-user-shadow" aria-hidden="true" />
         <div className="remote-user-sprite" aria-hidden="true">
-          <div className="remote-user-head" />
-          <div className="remote-user-body" />
+          <img className="character-sprite-image" src={sprite} alt="" />
         </div>
         <div className="remote-user-nameplate">{label}</div>
         <span className="remote-user-status-dot" aria-hidden="true" />

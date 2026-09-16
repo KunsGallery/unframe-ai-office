@@ -142,6 +142,7 @@ export default function OfficeMap({
   room,
   onlineUsers = [],
   onMotionApiReady,
+  latestTeamMessage = null,
 }) {
   const activeAgent =
     agents.find((agent) => agent.id === activeAgentId) || agents[0];
@@ -509,7 +510,7 @@ export default function OfficeMap({
                 );
               })}
 
-              <OnlineUsers users={onlineUsers} />
+              <OnlineUsers users={onlineUsers} latestMessage={latestTeamMessage} />
 
               <PlayerAvatar
                 user={user}
@@ -517,6 +518,11 @@ export default function OfficeMap({
                 isMoving={isMoving}
                 isNearAgent={Boolean(nearestInteractionTarget)}
                 nearestAgentName={nearestInteractionTarget?.agent?.name}
+                speechBubble={
+                  latestTeamMessage?.senderEmail === user?.email
+                    ? latestTeamMessage.content
+                    : ""
+                }
               />
             </div>
           </div>

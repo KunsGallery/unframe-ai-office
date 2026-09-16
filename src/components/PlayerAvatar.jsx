@@ -29,6 +29,7 @@ export default function PlayerAvatar({
   isMoving,
   isNearAgent,
   nearestAgentName,
+  speechBubble,
 }) {
   const isOwner = isOwnerEmail(user);
   const label = getUserDisplayLabel(user);
@@ -45,11 +46,16 @@ export default function PlayerAvatar({
         </div>
       )}
 
+      {speechBubble && <div className="pixel-player-speech-bubble">{speechBubble}</div>}
+
       <div className="pixel-player-shadow" aria-hidden="true" />
 
-      <div className="pixel-player-body" aria-hidden="true">
-        <div className="pixel-player-head" />
-        <div className="pixel-player-outfit" />
+      <div className="pixel-player-body character-sprite-body" aria-hidden="true">
+        <img
+          className="character-sprite-image"
+          src={isOwner ? "/assets/chat-characters/owner-puppy.png" : "/assets/chat-characters/staff-bunny.png"}
+          alt=""
+        />
       </div>
 
       <div className="pixel-player-name">{label}</div>
