@@ -24,6 +24,46 @@ function getInitial(name) {
 }
 
 const REACTION_OPTIONS = ["👍", "❤️", "😂"];
+const CHAT_SETTINGS_DEFAULTS = {
+  bubbleColor: "#004aad",
+  bubbleShape: "round",
+  bubbleDecoration: "none",
+  chatBackground: "#f4f7fc",
+  fontFamily: "system",
+  notificationSound: "soft",
+};
+const SOUND_OPTIONS = [
+  { id: "soft", label: "소프트 차임" },
+  { id: "bright", label: "밝은 알림" },
+  { id: "pop", label: "가벼운 톡" },
+];
+const BUBBLE_COLORS = [
+  { value: "#004aad", label: "오피스 블루" },
+  { value: "#6d4aff", label: "라벤더" },
+  { value: "#16845b", label: "민트 그린" },
+  { value: "#d35b28", label: "코랄" },
+];
+const CHAT_BACKGROUNDS = [
+  { value: "#f4f7fc", label: "아이스 블루" },
+  { value: "#fbf7ef", label: "웜 크림" },
+  { value: "#f3f0ff", label: "라벤더 안개" },
+  { value: "#eef7f1", label: "민트 안개" },
+];
+const FONT_OPTIONS = [
+  { value: "system", label: "기본 고딕", css: '"Pretendard", "IBM Plex Sans KR", system-ui, sans-serif' },
+  { value: "noto", label: "Noto Sans KR", css: '"Noto Sans KR", sans-serif' },
+  { value: "jua", label: "Jua · 귀여운 고딕", css: '"Jua", sans-serif' },
+  { value: "gowun", label: "고운돋움", css: '"Gowun Dodum", sans-serif' },
+  { value: "gaegu", label: "개구 · 손글씨", css: '"Gaegu", cursive' },
+  { value: "nanumPen", label: "나눔손글씨 펜", css: '"Nanum Pen Script", cursive' },
+  { value: "serif", label: "부드러운 명조", css: 'Georgia, "Noto Serif KR", serif' },
+  { value: "mono", label: "정돈된 고정폭", css: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+];
+const BUBBLE_DECORATIONS = [
+  { value: "none", label: "장식 없음" },
+  { value: "carrot", label: "🥕 당근 포인트" },
+  { value: "bone", label: "🦴 개뼈다귀 포인트" },
+];
 
 function getTypingLabel(email) {
   return email === "sylove887@gmail.com" ? "소연님" : "대표님";
@@ -51,6 +91,15 @@ export default function TeamChatPanel({
   const [errorMessage, setErrorMessage] = useState("");
   const [typingUsers, setTypingUsers] = useState([]);
   const [reactionNotice, setReactionNotice] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [chatSettings, setChatSettings] = useState(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("unframe-chat-settings") || "{}");
+      return { ...CHAT_SETTINGS_DEFAULTS, ...stored };
+    } catch {
+      return CHAT_SETTINGS_DEFAULTS;
+    }
+  });
   const [notificationVolume, setNotificationVolume] = useState(() => {
     const stored = Number(window.localStorage.getItem("unframe-notification-volume"));
     return Number.isFinite(stored) && stored >= 0 ? Math.min(stored, 1) : 0.8;
@@ -86,20 +135,35 @@ export default function TeamChatPanel({
       void context.resume();
       const oscillator = context.createOscillator();
       const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(740, context.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(980, context.currentTime + 0.09);
+      const soundConfig = {
+        soft: { type: "sine", start: 740, end: 980, duration: 0.2 },
+        bright: { type: "triangle", start: 880, end: 1320, duration: 0.24 },
+        pop: { type: "sine", start: 420, end: 260, duration: 0.14 },
+      }[chatSettings.notificationSound] || { type: "sine", start: 740, end: 980, duration: 0.2 };
+      oscillator.type = soundConfig.type;
+      oscillator.frequency.setValueAtTime(soundConfig.start, context.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(soundConfig.end, context.currentTime + soundConfig.duration * 0.45);
       gain.gain.setValueAtTime(0.0001, context.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.1 * notificationVolume, context.currentTime + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + soundConfig.duration);
       oscillator.connect(gain);
       gain.connect(context.destination);
       oscillator.start();
-      oscillator.stop(context.currentTime + 0.2);
+      oscillator.stop(context.currentTime + soundConfig.duration + 0.02);
     } catch {
       // Browser autoplay policies may block sound until the user interacts.
     }
-  }, [notificationVolume]);
+  }, [chatSettings.notificationSound, notificationVolume]);
+
+  const updateChatSetting = (key, value) => {
+    setChatSettings((previous) => {
+      const next = { ...previous, [key]: value };
+      window.localStorage.setItem("unframe-chat-settings", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const selectedFont = FONT_OPTIONS.find((option) => option.value === chatSettings.fontFamily) || FONT_OPTIONS[0];
 
   useEffect(() => {
     return subscribeTeamMessages({
@@ -242,6 +306,13 @@ export default function TeamChatPanel({
     <section
       className="team-chat-panel"
       aria-label={`${roomName} 직원 채팅`}
+      style={{
+        "--team-chat-bg": chatSettings.chatBackground,
+        "--team-chat-mine": chatSettings.bubbleColor,
+        "--team-chat-font": selectedFont.css,
+        "--team-chat-bubble-radius": chatSettings.bubbleShape === "square" ? "8px" : chatSettings.bubbleShape === "soft" ? "20px" : "14px",
+      }}
+      data-bubble-decoration={chatSettings.bubbleDecoration}
       onPointerDown={() => {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (AudioContext && !audioContextRef.current) audioContextRef.current = new AudioContext();
@@ -270,6 +341,14 @@ export default function TeamChatPanel({
             }}
           >
             새 창
+          </button>
+          <button
+            type="button"
+            className="team-chat-settings-button"
+            aria-expanded={isSettingsOpen}
+            onClick={() => setIsSettingsOpen((open) => !open)}
+          >
+            설정
           </button>
           <button
             type="button"
@@ -302,6 +381,59 @@ export default function TeamChatPanel({
         </button>
         <input ref={attachmentInputRef} type="file" hidden onChange={handleAttachmentChange} />
       </div>
+
+      {isSettingsOpen && (
+        <div className="team-chat-settings" aria-label="채팅 설정">
+          <div className="team-chat-settings-heading">
+            <div>
+              <strong>채팅 설정</strong>
+              <span>이 브라우저에 자동 저장됩니다.</span>
+            </div>
+            <button type="button" onClick={() => setIsSettingsOpen(false)} aria-label="채팅 설정 닫기">닫기</button>
+          </div>
+          <label className="team-chat-setting-field">
+            <span>내 말풍선 색상</span>
+            <select value={chatSettings.bubbleColor} onChange={(event) => updateChatSetting("bubbleColor", event.target.value)}>
+              {BUBBLE_COLORS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="team-chat-setting-field">
+            <span>말풍선 모양</span>
+            <select value={chatSettings.bubbleShape} onChange={(event) => updateChatSetting("bubbleShape", event.target.value)}>
+              <option value="round">기본 둥근형</option>
+              <option value="soft">더 둥글게</option>
+              <option value="square">각진 카드형</option>
+            </select>
+          </label>
+          <label className="team-chat-setting-field">
+            <span>말풍선 장식</span>
+            <select value={chatSettings.bubbleDecoration} onChange={(event) => updateChatSetting("bubbleDecoration", event.target.value)}>
+              {BUBBLE_DECORATIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="team-chat-setting-field">
+            <span>채팅창 배경</span>
+            <select value={chatSettings.chatBackground} onChange={(event) => updateChatSetting("chatBackground", event.target.value)}>
+              {CHAT_BACKGROUNDS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="team-chat-setting-field">
+            <span>채팅 폰트</span>
+            <select value={chatSettings.fontFamily} onChange={(event) => updateChatSetting("fontFamily", event.target.value)}>
+              {FONT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <div className="team-chat-setting-field">
+            <span>수신 알림음</span>
+            <div className="team-chat-sound-row">
+              <select value={chatSettings.notificationSound} onChange={(event) => updateChatSetting("notificationSound", event.target.value)}>
+                {SOUND_OPTIONS.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+              <button type="button" onClick={playNotificationSound}>테스트</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(localStream || remoteStream) && (
         <div className="team-screen-share-view" aria-label="화면공유 미리보기">
