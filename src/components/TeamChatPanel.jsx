@@ -364,7 +364,7 @@ export default function TeamChatPanel({
                   </a>
                 )}
                 {!isMine && (
-                  <div className="team-message-reactions" aria-label="메시지 리액션">
+                  <div className="team-message-reactions" aria-label="메시지 리액션 보내기">
                     {REACTION_OPTIONS.map((emoji) => {
                       const reactionCount = Object.values(message.reactions || {}).filter(
                         (value) => value === emoji,
@@ -383,6 +383,14 @@ export default function TeamChatPanel({
                           {emoji}{reactionCount > 0 && <span>{reactionCount}</span>}
                         </button>
                       );
+                    })}
+                  </div>
+                )}
+                {Object.entries(message.reactions || {}).length > 0 && (
+                  <div className="team-message-reaction-summary" aria-label="이 메시지에 달린 리액션">
+                    {REACTION_OPTIONS.map((emoji) => {
+                      const count = Object.values(message.reactions || {}).filter((value) => value === emoji).length;
+                      return count > 0 ? <span key={emoji}>{emoji} {count}</span> : null;
                     })}
                   </div>
                 )}

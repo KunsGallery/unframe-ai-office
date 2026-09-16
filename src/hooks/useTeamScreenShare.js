@@ -13,6 +13,7 @@ export default function useTeamScreenShare({ roomId, user }) {
   const peerRef = useRef(null);
   const roleRef = useRef(null);
   const candidateQueueRef = useRef([]);
+  const pendingCandidatesRef = useRef([]);
   const stopSharingRef = useRef(null);
   const seenSignalIdsRef = useRef(new Set());
   const initialSignalsLoadedRef = useRef(false);
@@ -83,6 +84,7 @@ export default function useTeamScreenShare({ roomId, user }) {
             if (signal.type === "offer") {
               const peer = createPeer("guest");
               await peer.setRemoteDescription(signal.payload);
+              candidateQueueRef.current.push(...pendingCandidatesRef.current.splice(0));
               await flushCandidates(peer);
               const answer = await peer.createAnswer();
               await peer.setLocalDescription(answer);
@@ -98,8 +100,10 @@ export default function useTeamScreenShare({ roomId, user }) {
               return;
             }
 
-            if (signal.type === "candidate" && peerRef.current) {
-              if (peerRef.current.remoteDescription) {
+            if (signal.type === "candidate") {
+              if (!peerRef.current) {
+                pendingCandidatesRef.current.push(signal.payload);
+              } else if (peerRef.current.remoteDescription) {
                 await peerRef.current.addIceCandidate(signal.payload);
               } else {
                 candidateQueueRef.current.push(signal.payload);
