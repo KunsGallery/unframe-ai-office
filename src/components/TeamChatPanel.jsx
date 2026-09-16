@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { sendTeamMessage, subscribeTeamMessages } from "../lib/teamChat";
+import {
+  sendTeamMessage,
+  setTeamTyping,
+  subscribeTeamMessages,
+  subscribeTeamTyping,
+  toggleTeamReaction,
+} from "../lib/teamChat";
 
 function formatMessageTime(timestamp) {
   if (!timestamp?.toDate) return "방금";
@@ -14,12 +20,19 @@ function getInitial(name) {
   return name?.trim().slice(0, 1).toUpperCase() || "?";
 }
 
+const REACTION_OPTIONS = ["👍", "❤️", "😂"];
+
+function getTypingLabel(email) {
+  return email === "sylove887@gmail.com" ? "소연님" : "대표님";
+}
+
 export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [typingUsers, setTypingUsers] = useState([]);
   const [subscriptionKey, setSubscriptionKey] = useState(0);
   const messagesRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -27,6 +40,7 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
   const hasHydratedRef = useRef(false);
   const knownMessageIdsRef = useRef(new Set());
   const audioContextRef = useRef(null);
+  const inputRef = useRef(null);
 
   const playNotificationSound = () => {
     try {
@@ -77,6 +91,27 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
   }, [onLatestMessage, roomId, subscriptionKey, user?.email]);
 
   useEffect(() => {
+    return subscribeTeamTyping({
+      roomId,
+      onChange: setTypingUsers,
+    });
+  }, [roomId, subscriptionKey]);
+
+  useEffect(() => {
+    const typing = Boolean(input.trim());
+    void setTeamTyping({ roomId, user, typing });
+    const timeoutId = typing
+      ? window.setTimeout(() => {
+          void setTeamTyping({ roomId, user, typing: false });
+        }, 900)
+      : null;
+
+    return () => {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [input, roomId, user]);
+
+  useEffect(() => {
     if (!isPinnedToBottomRef.current) return;
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -102,11 +137,13 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
     try {
       await sendTeamMessage({ roomId, user, content });
       setInput("");
+      await setTeamTyping({ roomId, user, typing: false });
     } catch (error) {
       console.error("Failed to send team chat message", error);
       setErrorMessage("메시지를 보내지 못했습니다. 네트워크 연결을 확인해주세요.");
     } finally {
       setIsSending(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   };
 
@@ -193,12 +230,43 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
                   </span>
                 )}
                 <p>{message.content}</p>
+                {!isMine && (
+                  <div className="team-message-reactions" aria-label="메시지 리액션">
+                    {REACTION_OPTIONS.map((emoji) => {
+                      const reactionCount = Object.values(message.reactions || {}).filter(
+                        (value) => value === emoji,
+                      ).length;
+                      const isActive = message.reactions?.[user?.email?.toLowerCase().replace(/[^a-z0-9]/g, "_")] === emoji;
+                      return (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className={isActive ? "active" : ""}
+                          aria-label={`${emoji} 리액션`}
+                          onClick={() =>
+                            void toggleTeamReaction({ roomId, messageId: message.id, user, emoji })
+                          }
+                        >
+                          {emoji}{reactionCount > 0 && <span>{reactionCount}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <time>{formatMessageTime(message.createdAt)}</time>
               </div>
             </article>
           );
         })}
         <div ref={messagesEndRef} />
+        {typingUsers
+          .filter((typingUser) => typingUser.senderEmail !== currentUserEmail)
+          .map((typingUser) => (
+            <div className="team-typing-indicator" key={typingUser.senderEmail}>
+              <span>{getTypingLabel(typingUser.senderEmail)}님이 입력 중</span>
+              <i /><i /><i />
+            </div>
+          ))}
       </div>
 
       {errorMessage && (
@@ -210,6 +278,7 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
 
       <div className="team-chat-input-row">
         <textarea
+          ref={inputRef}
           aria-label="직원 채팅 메시지"
           value={input}
           onChange={(event) => setInput(event.target.value)}

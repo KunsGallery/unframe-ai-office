@@ -128,12 +128,14 @@ service cloud.firestore {
           "senderEmail",
           "senderName",
           "createdAt",
+          "reactions",
         ]) &&
         request.resource.data.keys().hasOnly([
           "content",
           "senderEmail",
           "senderName",
           "createdAt",
+          "reactions",
         ]) &&
         request.resource.data.content is string &&
         request.resource.data.content.size() > 0 &&
@@ -144,7 +146,32 @@ service cloud.firestore {
         request.resource.data.senderName is string &&
         request.resource.data.senderName.size() > 0 &&
         request.resource.data.senderName.size() <= 80 &&
+        request.resource.data.reactions is map &&
         request.resource.data.createdAt is timestamp;
+    }
+
+    function isValidTeamMessageReactionUpdate() {
+      return isAllowedStaff() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["reactions"]) &&
+        request.resource.data.reactions is map;
+    }
+
+    function isValidTeamTypingData() {
+      return request.resource.data.keys().hasAll([
+          "senderEmail",
+          "typing",
+          "updatedAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "senderEmail",
+          "typing",
+          "updatedAt",
+        ]) &&
+        request.resource.data.senderEmail is string &&
+        request.resource.data.senderEmail == userEmail() &&
+        isAllowedEmail(request.resource.data.senderEmail) &&
+        request.resource.data.typing == true &&
+        request.resource.data.updatedAt is timestamp;
     }
 
     function ownsExistingTask() {
@@ -459,7 +486,16 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow get, list: if isAllowedRoom(roomId) && isAllowedStaff();
         allow create: if isAllowedStaff() && isValidTeamMessageCreate(roomId);
-        allow update, delete: if false;
+        allow update: if isValidTeamMessageReactionUpdate();
+        allow delete: if false;
+      }
+
+      match /typingUsers/{userKey} {
+        allow get, list: if isAllowedRoom(roomId) && isAllowedStaff();
+        allow create, update: if isAllowedRoom(roomId) &&
+          isValidTeamTypingData();
+        allow delete: if isAllowedStaff() &&
+          resource.data.senderEmail == userEmail();
       }
     }
 
