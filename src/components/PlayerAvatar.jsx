@@ -30,6 +30,7 @@ export default function PlayerAvatar({
   isNearAgent,
   nearestAgentName,
   speechBubble,
+  isTyping = false,
 }) {
   const isOwner = isOwnerEmail(user);
   const label = getUserDisplayLabel(user);
@@ -46,7 +47,11 @@ export default function PlayerAvatar({
         </div>
       )}
 
-      {speechBubble && <div className="pixel-player-speech-bubble">{speechBubble}</div>}
+      {speechBubble ? (
+        <div className="pixel-player-speech-bubble">{speechBubble}</div>
+      ) : isTyping ? (
+        <div className="pixel-player-speech-bubble typing-dots">...</div>
+      ) : null}
 
       <div className="pixel-player-shadow" aria-hidden="true" />
 

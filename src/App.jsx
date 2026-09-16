@@ -3,7 +3,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "./lib/firebase";
 import { agents } from "./data/agents";
 import { rooms } from "./data/rooms";
-import { subscribeTeamMessages } from "./lib/teamChat";
+import { subscribeTeamMessages, subscribeTeamTyping } from "./lib/teamChat";
 import AgentTaskQueue from "./components/AgentTaskQueue";
 import LoginScreen from "./components/LoginScreen";
 import ChatPanel from "./components/ChatPanel";
@@ -36,7 +36,9 @@ function playTeamNotification(audioContextRef) {
     oscillator.frequency.setValueAtTime(740, context.currentTime);
     oscillator.frequency.exponentialRampToValueAtTime(980, context.currentTime + 0.09);
     gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.015);
+    const storedVolume = Number(window.localStorage.getItem("unframe-notification-volume"));
+    const volume = Number.isFinite(storedVolume) ? Math.max(0, Math.min(storedVolume, 1)) : 0.8;
+    gain.gain.exponentialRampToValueAtTime(0.1 * volume, context.currentTime + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
     oscillator.connect(gain);
     gain.connect(context.destination);
@@ -60,6 +62,8 @@ export default function App() {
   const [motionApi, setMotionApi] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [latestTeamMessage, setLatestTeamMessage] = useState(null);
+  const [teamTypingUsers, setTeamTypingUsers] = useState([]);
+  const [quietMode, setQuietMode] = useState(() => window.localStorage.getItem("unframe-quiet-mode") === "true");
   const knownTeamMessageIdsRef = useRef(new Set());
   const teamAudioContextRef = useRef(null);
   const sideTabs = ["team-chat", "chat", "tasks"];
@@ -127,13 +131,21 @@ export default function App() {
             !knownTeamMessageIdsRef.current.has(message.id) &&
             message.senderEmail !== user.email,
         );
-        if (activeSideTab !== "team-chat" && knownTeamMessageIdsRef.current.size && receivedNewMessage) {
+        if (!quietMode && activeSideTab !== "team-chat" && knownTeamMessageIdsRef.current.size && receivedNewMessage) {
           playTeamNotification(teamAudioContextRef);
         }
         knownTeamMessageIdsRef.current = new Set(nextMessages.map((message) => message.id));
       },
     });
-  }, [activeRoomId, activeSideTab, user?.email]);
+  }, [activeRoomId, activeSideTab, quietMode, user?.email]);
+
+  useEffect(() => {
+    if (!user?.email || !allowedEmails.includes(user.email)) return undefined;
+    return subscribeTeamTyping({
+      roomId: activeRoomId,
+      onChange: setTeamTypingUsers,
+    });
+  }, [activeRoomId, user?.email]);
 
   useEffect(() => {
     if (!user?.email || !allowedEmails.includes(user.email)) {
@@ -190,6 +202,11 @@ export default function App() {
           user={user}
           roomId={activeRoomId}
           roomName={activeRoom.name}
+          quietMode={quietMode}
+          onQuietModeChange={(nextQuietMode) => {
+            setQuietMode(nextQuietMode);
+            window.localStorage.setItem("unframe-quiet-mode", String(nextQuietMode));
+          }}
         />
       </main>
     );
@@ -241,6 +258,8 @@ export default function App() {
             room={activeRoom}
             onlineUsers={visibleOnlineUsers}
             latestTeamMessage={latestTeamMessage}
+            teamTypingUsers={teamTypingUsers}
+            quietMode={quietMode}
             onMotionApiReady={setMotionApi}
           />
         </section>
@@ -301,6 +320,12 @@ export default function App() {
                 roomId={activeRoomId}
                 roomName={activeRoom.name}
                 onLatestMessage={setLatestTeamMessage}
+                onTypingUsersChange={setTeamTypingUsers}
+                quietMode={quietMode}
+                onQuietModeChange={(nextQuietMode) => {
+                  setQuietMode(nextQuietMode);
+                  window.localStorage.setItem("unframe-quiet-mode", String(nextQuietMode));
+                }}
               />
             ) : activeSideTab === "chat" ? (
               <ChatPanel

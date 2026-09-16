@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  getSafeUserKey,
   sendTeamMessage,
+  uploadTeamAttachment,
   setTeamTyping,
   subscribeTeamMessages,
   subscribeTeamTyping,
   toggleTeamReaction,
 } from "../lib/teamChat";
+import useTeamScreenShare from "../hooks/useTeamScreenShare";
 
 function formatMessageTime(timestamp) {
   if (!timestamp?.toDate) return "방금";
@@ -26,13 +29,33 @@ function getTypingLabel(email) {
   return email === "sylove887@gmail.com" ? "소연님" : "대표님";
 }
 
-export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage }) {
+function getReactionLabel(key) {
+  if (key === getSafeUserKey("sylove887@gmail.com")) return "소연님";
+  if (key === getSafeUserKey("gallerykuns@gmail.com")) return "대표님";
+  return "팀원";
+}
+
+export default function TeamChatPanel({
+  user,
+  roomId,
+  roomName,
+  onLatestMessage,
+  onTypingUsersChange,
+  quietMode = false,
+  onQuietModeChange,
+}) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [typingUsers, setTypingUsers] = useState([]);
+  const [reactionNotice, setReactionNotice] = useState("");
+  const [notificationVolume, setNotificationVolume] = useState(() => {
+    const stored = Number(window.localStorage.getItem("unframe-notification-volume"));
+    return Number.isFinite(stored) && stored >= 0 ? Math.min(stored, 1) : 0.8;
+  });
+  const [isUploading, setIsUploading] = useState(false);
   const [subscriptionKey, setSubscriptionKey] = useState(0);
   const messagesRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -41,8 +64,20 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
   const knownMessageIdsRef = useRef(new Set());
   const audioContextRef = useRef(null);
   const inputRef = useRef(null);
+  const attachmentInputRef = useRef(null);
+  const knownReactionsRef = useRef(new Map());
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const {
+    localStream,
+    remoteStream,
+    status: screenShareStatus,
+    error: screenShareError,
+    startSharing,
+    stopSharing,
+  } = useTeamScreenShare({ roomId, user });
 
-  const playNotificationSound = () => {
+  const playNotificationSound = useCallback(() => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
@@ -55,7 +90,7 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
       oscillator.frequency.setValueAtTime(740, context.currentTime);
       oscillator.frequency.exponentialRampToValueAtTime(980, context.currentTime + 0.09);
       gain.gain.setValueAtTime(0.0001, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.1 * notificationVolume, context.currentTime + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
       oscillator.connect(gain);
       gain.connect(context.destination);
@@ -64,7 +99,7 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
     } catch {
       // Browser autoplay policies may block sound until the user interacts.
     }
-  };
+  }, [notificationVolume]);
 
   useEffect(() => {
     return subscribeTeamMessages({
@@ -74,10 +109,24 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
         setIsLoading(false);
         onLatestMessage?.(nextMessages.at(-1) || null);
 
+        nextMessages.forEach((message) => {
+          const previousReactions = knownReactionsRef.current.get(message.id) || {};
+          const nextReactions = message.reactions || {};
+          const addedReaction = Object.entries(nextReactions).find(
+            ([email, emoji]) =>
+              email !== getSafeUserKey(user?.email) && previousReactions[email] !== emoji,
+          );
+          if (hasHydratedRef.current && addedReaction) {
+            setReactionNotice(`${getReactionLabel(addedReaction[0])}이(가) ${addedReaction[1]} 리액션을 보냈어요.`);
+            window.setTimeout(() => setReactionNotice(""), 2800);
+          }
+          knownReactionsRef.current.set(message.id, nextReactions);
+        });
+
         const incomingNewMessage = nextMessages.some(
           (message) => !knownMessageIdsRef.current.has(message.id) && message.senderEmail !== user?.email,
         );
-        if (hasHydratedRef.current && incomingNewMessage) {
+        if (hasHydratedRef.current && incomingNewMessage && !quietMode) {
           playNotificationSound();
         }
         knownMessageIdsRef.current = new Set(nextMessages.map((message) => message.id));
@@ -88,14 +137,25 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
         setIsLoading(false);
       },
     });
-  }, [onLatestMessage, roomId, subscriptionKey, user?.email]);
+  }, [onLatestMessage, playNotificationSound, quietMode, roomId, subscriptionKey, user?.email]);
+
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+  }, [localStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
 
   useEffect(() => {
     return subscribeTeamTyping({
       roomId,
-      onChange: setTypingUsers,
+      onChange: (nextTypingUsers) => {
+        setTypingUsers(nextTypingUsers);
+        onTypingUsersChange?.(nextTypingUsers);
+      },
     });
-  }, [roomId, subscriptionKey]);
+  }, [onTypingUsersChange, roomId, subscriptionKey]);
 
   useEffect(() => {
     const typing = Boolean(input.trim());
@@ -153,6 +213,31 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
     setSubscriptionKey((key) => key + 1);
   };
 
+  const handleVolumeChange = (event) => {
+    const nextVolume = Number(event.target.value);
+    setNotificationVolume(nextVolume);
+    window.localStorage.setItem("unframe-notification-volume", String(nextVolume));
+  };
+
+  const handleAttachmentChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsUploading(true);
+    setErrorMessage("");
+    try {
+      const attachment = await uploadTeamAttachment({ roomId, user, file });
+      await sendTeamMessage({ roomId, user, content: `📎 ${file.name}`, attachment });
+    } catch (error) {
+      console.error("Failed to share team attachment", error);
+      setErrorMessage(error.message || "자료를 공유하지 못했습니다.");
+    } finally {
+      setIsUploading(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  };
+
   return (
     <section
       className="team-chat-panel"
@@ -186,8 +271,46 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
           >
             새 창
           </button>
+          <button
+            type="button"
+            className="team-chat-share-button"
+            onClick={() => (screenShareStatus === "idle" ? void startSharing() : void stopSharing())}
+          >
+            {screenShareStatus === "idle" ? "화면 공유" : "공유 중지"}
+          </button>
         </div>
       </header>
+
+      <div className="team-chat-controls">
+        <label htmlFor="team-notification-volume">알림음</label>
+        <input
+          id="team-notification-volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={notificationVolume}
+          onChange={handleVolumeChange}
+          aria-label="알림음 볼륨"
+        />
+        <span>{Math.round(notificationVolume * 100)}%</span>
+        <button type="button" onClick={() => attachmentInputRef.current?.click()} disabled={isUploading}>
+          {isUploading ? "업로드 중" : "자료 공유"}
+        </button>
+        <button type="button" onClick={() => onQuietModeChange?.(!quietMode)}>
+          {quietMode ? "조용히 모드 켜짐" : "조용히 모드"}
+        </button>
+        <input ref={attachmentInputRef} type="file" hidden onChange={handleAttachmentChange} />
+      </div>
+
+      {(localStream || remoteStream) && (
+        <div className="team-screen-share-view" aria-label="화면공유 미리보기">
+          {localStream && <video ref={localVideoRef} autoPlay muted playsInline />}
+          {remoteStream && <video ref={remoteVideoRef} autoPlay playsInline />}
+        </div>
+      )}
+      {screenShareError && <p className="team-chat-error" role="alert">{screenShareError}</p>}
+      {reactionNotice && <div className="team-chat-reaction-notice" role="status">{reactionNotice}</div>}
 
       <div
         ref={messagesRef}
@@ -230,6 +353,16 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
                   </span>
                 )}
                 <p>{message.content}</p>
+                {message.attachment && (
+                  <a
+                    className="team-message-attachment"
+                    href={message.attachment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    📎 {message.attachment.name}
+                  </a>
+                )}
                 {!isMine && (
                   <div className="team-message-reactions" aria-label="메시지 리액션">
                     {REACTION_OPTIONS.map((emoji) => {
@@ -285,7 +418,7 @@ export default function TeamChatPanel({ user, roomId, roomName, onLatestMessage 
           placeholder="팀원에게 메시지 보내기"
           rows={2}
           maxLength={2000}
-          disabled={isSending}
+          disabled={isSending || isUploading}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();

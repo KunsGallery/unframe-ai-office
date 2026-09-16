@@ -136,6 +136,7 @@ service cloud.firestore {
           "senderName",
           "createdAt",
           "reactions",
+          "attachment",
         ]) &&
         request.resource.data.content is string &&
         request.resource.data.content.size() > 0 &&
@@ -147,6 +148,23 @@ service cloud.firestore {
         request.resource.data.senderName.size() > 0 &&
         request.resource.data.senderName.size() <= 80 &&
         request.resource.data.reactions is map &&
+        (
+          !request.resource.data.keys().hasAny(["attachment"]) ||
+          request.resource.data.attachment == null ||
+          (
+            request.resource.data.attachment is map &&
+            request.resource.data.attachment.keys().hasAll(["name", "size", "type", "url"]) &&
+            request.resource.data.attachment.keys().hasOnly(["name", "size", "type", "url"]) &&
+            request.resource.data.attachment.name is string &&
+            request.resource.data.attachment.name.size() <= 160 &&
+            request.resource.data.attachment.size is int &&
+            request.resource.data.attachment.size <= 10485760 &&
+            request.resource.data.attachment.type is string &&
+            request.resource.data.attachment.type.size() <= 120 &&
+            request.resource.data.attachment.url is string &&
+            request.resource.data.attachment.url.size() <= 2000
+          )
+        ) &&
         request.resource.data.createdAt is timestamp;
     }
 
@@ -172,6 +190,32 @@ service cloud.firestore {
         isAllowedEmail(request.resource.data.senderEmail) &&
         request.resource.data.typing == true &&
         request.resource.data.updatedAt is timestamp;
+    }
+
+    function isValidTeamCallSignal() {
+      return request.resource.data.keys().hasAll([
+          "senderEmail",
+          "type",
+          "payload",
+          "createdAt",
+        ]) &&
+        request.resource.data.keys().hasOnly([
+          "senderEmail",
+          "type",
+          "payload",
+          "createdAt",
+        ]) &&
+        request.resource.data.senderEmail is string &&
+        request.resource.data.senderEmail == userEmail() &&
+        isAllowedEmail(request.resource.data.senderEmail) &&
+        (
+          request.resource.data.type == "offer" ||
+          request.resource.data.type == "answer" ||
+          request.resource.data.type == "candidate" ||
+          request.resource.data.type == "stop"
+        ) &&
+        request.resource.data.payload is map &&
+        request.resource.data.createdAt is timestamp;
     }
 
     function ownsExistingTask() {
@@ -496,6 +540,12 @@ service cloud.firestore {
           isValidTeamTypingData();
         allow delete: if isAllowedStaff() &&
           resource.data.senderEmail == userEmail();
+      }
+
+      match /signals/{signalId} {
+        allow get, list: if isAllowedRoom(roomId) && isAllowedStaff();
+        allow create: if isAllowedRoom(roomId) && isValidTeamCallSignal();
+        allow update, delete: if false;
       }
     }
 
