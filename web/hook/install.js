@@ -51,7 +51,7 @@ for (const f of ['office-hook.js', 'office-state.js', 'install.js']) {
   const src = path.join(__dirname, f), dst = path.join(DIR, f);
   if (path.resolve(src) !== path.resolve(dst)) fs.copyFileSync(src, dst);
 }
-fs.writeFileSync(path.join(DIR, 'config.json'), JSON.stringify({ apiKey: conf.k, projectId: conf.p, refreshToken: conf.r, memberId: conf.i, showDetails: true }, null, 2), { mode: 0o600 });
+fs.writeFileSync(path.join(DIR, 'config.json'), JSON.stringify({ apiKey: conf.k, projectId: conf.p, refreshToken: conf.r, memberId: conf.i, site: conf.o || '', showDetails: true }, null, 2), { mode: 0o600 });
 try { fs.rmSync(path.join(DIR, 'id-token.json'), { force: true }); } catch {}
 
 const q = s => JSON.stringify(s); // 공백이 있는 경로도 안전하게

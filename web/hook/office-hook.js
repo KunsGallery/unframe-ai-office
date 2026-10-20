@@ -85,7 +85,8 @@ async function idToken(config) {
   const base = process.env.OFFICE_TOKEN_URL || 'https://securetoken.googleapis.com/v1/token';
   const res = await fetch(`${base}?key=${encodeURIComponent(config.apiKey)}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    // API 키를 사이트 주소로 제한해 둔 경우를 위해 사이트 주소를 Referer로 보낸다
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(config.site ? { Referer: config.site + '/' } : {}) },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: config.refreshToken }),
   });
   if (!res.ok) throw new Error('token ' + res.status);

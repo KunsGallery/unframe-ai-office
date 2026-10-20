@@ -69,7 +69,7 @@ async function firebaseStore() {
       if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
       return j.summary;
     },
-    connectCode: () => b64url(JSON.stringify({ k: firebaseConfig.apiKey, p: firebaseConfig.projectId, r: auth.currentUser.refreshToken, i: me.id, e: me.name })),
+    connectCode: () => b64url(JSON.stringify({ k: firebaseConfig.apiKey, p: firebaseConfig.projectId, r: auth.currentUser.refreshToken, i: me.id, e: me.name, o: location.origin })),
 
     // 📋 화이트보드: 아직 안 끝난 것 전부 + 오늘 끝낸 것
     onBoard: (cb, err) => {
