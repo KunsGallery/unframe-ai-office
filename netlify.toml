@@ -1,14 +1,20 @@
 [build]
-  command = "npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
+  # 정적 사이트라 빌드 단계가 없다. web/members.js는 이 PC에서 node scripts/build.js로 만들어 커밋한다.
+  command = "echo 'no build step'"
+  publish = "web"
 
-[dev]
-  command = "npm run dev"
-  port = 8888
-  targetPort = 5173
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 [[headers]]
   for = "/*"
   [headers.values]
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
     Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

@@ -1,17 +1,97 @@
-# React + Vite
+# 🏢 Claude Office
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+팀원들의 Claude Code가 지금 뭘 하는지 픽셀 사무실로 실시간 보여주고, 멤버끼리 메시지를 주고받는 사내 웹앱입니다.
+어디서나 링크 하나로 접속하고, 허용된 Gmail 계정만 로그인할 수 있어요.
 
-Currently, two official plugins are available:
+```
+각자 PC의 Claude Code ──훅──▶ Firestore ◀──실시간── 웹페이지 (Netlify)
+                                   ▲                  │
+                                   └──── 채팅/접속 ────┘     로그인: Firebase Auth (Google)
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 상시 서버가 없습니다. Netlify는 화면 파일과 ✨AI 요약 함수 하나만 올리고, 데이터는 Firestore에 저장되며 **보안 규칙(firestore.rules)**이 멤버만 읽고 쓰게 막습니다.
+- 공개되는 웹 파일에는 멤버 이메일이 들어가지 않아요(해시만). 이메일은 비공개인 보안 규칙에만 있습니다.
 
-## React Compiler
+## 폴더
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 파일 | 내용 |
+|---|---|
+| `members.json` | **멤버 목록** (id, Gmail, 이름, 직책, 캐릭터 0~5). 이메일이 들어 있어서 **저장소에 올리지 않음** (`members.example.json` 참고) |
+| `firestore.rules` | Firestore 보안 규칙. 이메일이 들어 있어서 **저장소에 올리지 않고** 이 PC에서 바로 게시 |
+| `web/members.js` | 공개용 멤버 목록 (이메일 대신 해시) — 빌드로 만들어 커밋 |
+| `web/firebase-config.js` | Firebase 웹 앱 설정 (unframe-ai-office) |
+| `web/` | Netlify에 올라가는 사이트 전체 |
+| `web/hook/` | 각자 PC에 설치되는 Claude Code 훅 |
+| `netlify/functions/summarize.mjs` | ✨ 업무일지 AI 요약 (Claude API, 멤버 로그인 확인 후 호출) |
+| `scripts/build.js` | members.json → `web/members.js` + `firestore.rules` 생성 |
 
-## Expanding the ESLint configuration
+## 배포 구조
+- GitHub `KunsGallery/unframe-ai-office`의 **main에 푸시하면 Netlify(unframe-office)가 자동 배포**해요.
+- Firebase 프로젝트: `unframe-ai-office` (Firestore 서울, Google 로그인)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-# unframe-ai-office
+## 처음 한 번만 할 일
+1. **Netlify 환경변수**: Netlify → unframe-office → Site configuration → Environment variables → `ANTHROPIC_API_KEY` 추가 (✨AI 요약용, https://console.anthropic.com 에서 발급). 추가 후 Deploys → Trigger deploy.
+2. **Firebase 승인 도메인**: Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 Netlify 주소(`unframe-office.netlify.app` 등) 추가. 안 하면 로그인 팝업이 막혀요.
+3. **각자 PC 연결** (재우님, 소연님 각각): 사이트에 로그인 → 오른쪽 위 **🔌 내 PC 연결** → 명령 복사 → 터미널에 붙여넣기. 새로 여는 Claude Code 세션부터 사무실에 출근해요. (연결 해제: `node ~/.claude-office/install.js --uninstall`)
+
+> 연결 명령에는 내 계정용 연결 코드가 들어 있어요. 다른 사람에게 보내지 말고 각자 자기 계정으로 받아야 해요.
+> Node를 nvm 등으로 다른 버전으로 바꾸면 연결 명령을 한 번 더 실행해 주세요.
+
+## 멤버를 바꾸거나 기능을 고쳤을 때
+```bash
+npm install                  # 처음 한 번
+node scripts/build.js        # members.json → web/members.js, firestore.rules
+npx firebase-tools deploy --only firestore:rules --project unframe-ai-office   # 규칙 게시
+git add -A && git commit -m "..." && git push   # main에 푸시 → Netlify 자동 배포
+```
+훅 파일(`web/hook/`)이 바뀌었으면 각자 🔌 내 PC 연결 명령을 한 번 더 실행해요.
+멤버가 3명 이상이면 1:1 대화 외에 **전체** 채팅방이 자동으로 생겨요.
+
+## 미리보기
+```bash
+node scripts/dev.js
+```
+http://localhost:4545 (localhost는 Firebase가 기본 허용). 주소 뒤에 `?demo`를 붙이면 가짜 데이터로 된 데모 모드로 열려요.
+
+## 사무실에서 할 수 있는 것
+
+| Claude Code가… | 캐릭터는… |
+|---|---|
+| 파일 읽기/검색 (Read, Grep, Glob) | 📚 자료실에서 책 읽기 |
+| 명령 실행 (Bash) | 🖥 서버실 랙 앞/콘솔에서 타이핑 |
+| 코드 수정 (Edit, Write) | ⌨️ 작업실 자기 책상에서 타이핑 (모니터 켜짐) |
+| 웹/MCP (WebFetch, WebSearch, mcp__*) | 📡 통신실 회의 테이블 |
+| 생각 중 / 계획 중 | 그 자리에서 💭 / 📝 |
+| 권한 승인 대기 | 노란 "…" 말풍선 + 노란 이름표 🙋 |
+| 작업 끝 | 초록 체크 ✓ 후 ☕ 라운지 소파 (5분 지나면 💤) |
+| 서브에이전트 호출 | 옷 색이 다른 동료가 🛗 엘리베이터로 출근 |
+
+- **👤 사람도 출근**: 사이트를 열어둔 멤버는 작업실 앞쪽 자기 책상에 앉아 있어요(흰 이름표). 각자의 Claude는 옷 색이 다른 🤖 캐릭터로 따로 움직여요.
+- **💼 내 상태**: 오른쪽 위에서 근무 중 / 📅 회의 중(통신실 회의 테이블로 이동) / 🎧 집중(메시지·요청 알림을 끔, 내 Claude 알림은 유지) / 🚶 외근·🌙 퇴근(사무실에서 퇴장). 내 캐릭터를 클릭해도 바꿀 수 있어요.
+- **📋 화이트보드**: 같이 쓰는 할 일 목록. **담당자·마감일**을 정할 수 있고(✎로 수정), 마감 지난 일은 ⚠️ 빨간색으로 맨 위에 와요. "내 담당"만 모아 보기, 누가 나에게 일을 맡기면 알림. 체크하면 바로 **🙋 확인 요청**으로 이어지는 버튼이 떠요. 사무실 작업실의 화이트보드를 클릭해도 열려요.
+- **🙋 확인 요청**: 내 세션 옆 버튼이나 내 🤖 캐릭터를 클릭해 상대에게 확인을 요청해요. **🔗 미리보기 링크**(배포 미리보기, Figma 등)를 붙이면 받은 사람이 바로 열어볼 수 있어요. 받은 사람은 “✅ 확인 완료 / ✏️ 수정 필요”와 한마디로 답하고, 요청과 답은 채팅에도 남아요. 대기 중인 요청을 보낸 사람에게는 📌가 붙어요.
+- **⏰ 승인 대기 재알림**: 내 Claude가 승인을 5분·15분 넘게 기다리면 한 번 더 알려줘요.
+- **📲 앱 설치**: 휴대폰·PC에서 "📲 앱 설치"(아이폰은 Safari 공유 → 홈 화면에 추가)로 홈 화면에 아이콘을 만들어 앱처럼 써요.
+- **📓 업무일지**: 오른쪽 위 버튼. 날짜별로 사람·프로젝트마다 근무 시간대, 실작업 시간, 지시/완료 건수, 커밋 메시지, 수정 파일, 주요 명령, 조사 주제와 팀의 화이트보드·확인 요청을 모아 보여줘요. **✨ AI 요약**을 누르면 Claude가 Director용 짧은 보고문을 써줘요(요약은 복사·보내기에 함께 포함). **복사**(카톡·메일용 텍스트)나 **채팅으로 보내기** 가능. 각자 PC가 작업 완료 때·10분마다 올린 기록이라 몇 분 늦을 수 있어요.
+  - Claude에게 *맡긴 일(프롬프트 앞부분)*까지 일지에 넣고 싶으면 각자 `~/.claude-office/config.json`에 `"journalPrompts": true`를 추가하세요. (기본은 꺼짐 — 프롬프트 내용은 상대도 볼 수 있게 되니까요)
+- 다른 사람 캐릭터를 클릭하면 그 사람과의 채팅이 열려요.
+- **💬 메시지**: 멤버끼리 1:1 채팅. 메시지를 보내면 보낸 사람 캐릭터 머리 위에도 말풍선이 떠요. 상대 상태(🎧 집중 등)와 안 읽은 개수가 보이고, 링크는 눌러서 열 수 있어요.
+- **🔔 알림**: 켜두면 새 메시지, *내* Claude의 승인 요청·작업 완료 때 소리 + (다른 탭에 있을 때) 데스크톱 알림.
+- **지금 일하는 중 / 최근 활동**: 세션별 프로젝트, 현재 도구, 서브에이전트 목록.
+- 라운지의 강아지·고양이를 클릭하면 하트가 떠요.
+- 사무실 배치는 `web/office.js`의 `FURNITURE` 목록(가구 이름, 칸 위치)을 고치면 바뀝니다.
+
+## 비용 (무료 범위)
+Firebase 무료(Spark) 요금제로 충분하도록 줄여 두었습니다: 도구가 *끝날 때*는 저장하지 않고, 상태가 바뀔 때만 1번 씁니다.
+대략 사람당 하루 도구 호출 수천 번 수준이면 무료 한도(쓰기 2만/일, 읽기 5만/일) 안이에요. 넘으면 그날만 갱신이 멈추고 다음 날 풀립니다.
+
+AI 요약은 누를 때만 Claude API를 1번 호출해요 (Claude Opus 5.5, 빠른 설정). 한 번에 대략 수십 원 정도예요.
+
+## 보안 메모
+- 로그인: members.json에 있는 Gmail만. 다른 계정은 로그인해도 데이터를 한 줄도 못 읽어요 (규칙에서 차단).
+- 각자 자기 세션·자기 메시지만 쓸 수 있고, 1:1 대화는 두 사람만 읽을 수 있어요.
+- AI 요약 함수는 Firebase 로그인 토큰의 서명을 확인하고 멤버 Gmail일 때만 Claude를 호출해요. API 키는 Netlify 환경변수에만 있고 브라우저로 가지 않아요.
+- 프롬프트 내용은 올리지 않습니다. 파일 이름·명령어 앞부분은 올라가요 (`~/.claude-office/config.json`의 `showDetails`를 `false`로 하면 도구 이름만).
+
+## 그래픽 출처
+캐릭터·가구·바닥·벽 스프라이트와 말풍선은 [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) (MIT)에서 가져왔고, 캐릭터 원작은 JIK-A-4의 Metro City 팩입니다. 라이선스 전문: `web/assets/LICENSE-pixel-agents.txt`

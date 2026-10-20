@@ -1,0 +1,16 @@
+[
+  {
+    "id": "jaewoo",
+    "email": "someone@gmail.com",
+    "name": "재우",
+    "title": "",
+    "char": 0
+  },
+  {
+    "id": "soyeon",
+    "email": "another@gmail.com",
+    "name": "박소연",
+    "title": "Director",
+    "char": 3
+  }
+]
