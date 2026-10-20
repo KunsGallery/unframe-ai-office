@@ -113,6 +113,17 @@ service cloud.firestore {
         && request.resource.data.seq is int && request.resource.data.seq > resource.data.seq;
     }
 
+    // 🎨 꾸미기: 각자 자기 모습과 자기 Claude의 모습·이름만 바꿀 수 있다
+    match /profiles/{pid} {
+      function okLook(c, h) { return c is int && c >= 0 && c <= 5 && h is int && h >= 0 && h < 360; }
+      allow read: if isMember();
+      allow write: if isMember() && pid == myId()
+        && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName'])
+        && okLook(request.resource.data.char, request.resource.data.hue)
+        && okLook(request.resource.data.claudeChar, request.resource.data.claudeHue)
+        && request.resource.data.claudeName is string && request.resource.data.claudeName.size() <= 16;
+    }
+
     // 접속 표시 (페이지를 열어둔 동안 1분마다 갱신)
     match /presence/{pid} {
       allow read: if isMember();

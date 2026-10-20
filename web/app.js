@@ -18,8 +18,19 @@ async function memberForEmail(email) {
 }
 office.setUserChars(Object.fromEntries(MEMBERS.map(m => [m.name, m.char ?? 0])));
 office.setReservedDesks(MEMBERS.length);   // 앞쪽 책상은 사람 자리
-const avatar = m => office.avatarFor(m.char ?? office.charFor(m.name), 0);
-const claudeAvatar = m => office.avatarFor(m.char ?? office.charFor(m.name), office.HUE.main);
+// 각자 꾸민 생김새 (Firestore profiles). 없으면 members.json의 기본 캐릭터
+let profiles = {};
+function look(m) {
+  const p = (m && profiles[m.id]) || {}, base = m && m.char != null ? m.char : office.charFor(m ? m.name : '?');
+  return {
+    char: p.char ?? base, hue: p.hue ?? 0,
+    claudeChar: p.claudeChar ?? base, claudeHue: p.claudeHue ?? office.HUE.main,
+    claudeName: (p.claudeName || '').trim() || `${m ? m.name : '?'}의 Claude`,
+  };
+}
+const avatar = m => { const l = look(m); return office.avatarFor(l.char, l.hue); };
+const claudeAvatar = m => { const l = look(m); return office.avatarFor(l.claudeChar, l.claudeHue); };
+const claudeName = id => look(byId[id] || { name: nameOf(id) }).claudeName;
 // 사람 상태
 const STATUS = { work: '💼 근무 중', meeting: '📅 회의 중', focus: '🎧 집중', out: '🚶 외근', off: '🌙 퇴근' };
 let myStatus = 'work';
@@ -56,6 +67,8 @@ async function firebaseStore() {
       F.query(F.collection(db, 'chats', chatId, 'messages'), F.orderBy('at'), F.limitToLast(200)),
       s => cb(s.docs.map(d => ({ id: d.id, from: d.data().from, text: d.data().text, at: ms(d), pending: d.metadata.hasPendingWrites }))), err),
     send: (chatId, text) => F.addDoc(F.collection(db, 'chats', chatId, 'messages'), { from: me.id, text, at: F.serverTimestamp() }),
+    onProfiles: cb => F.onSnapshot(F.collection(db, 'profiles'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()])))),
+    saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p),
     heartbeat: status => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status }),
     onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work' }])))),
     // ✨ AI 요약 (Netlify Function이 멤버인지 확인한 뒤 Claude API 호출)
@@ -106,6 +119,7 @@ function b64url(s) { return btoa(String.fromCharCode(...new TextEncoder().encode
 // ======================================================================
 function demoStore() {
   const sessions = new Map(), chats = {}, subs = { sessions: [], msgs: {}, board: [], reqs: [], presence: [] };
+  const profilesDemo = {};
   const presenceDemo = Object.fromEntries(MEMBERS.map((m, i) => [m.id, { at: Date.now(), status: i ? 'focus' : 'work' }]));
   const journals = {}, board = [], reqs = [];
   const uid = () => Math.random().toString(36).slice(2);
@@ -189,6 +203,8 @@ function demoStore() {
       if (id.startsWith('dm__') && other !== MEMBERS[0])
         setTimeout(() => addMsg(id, other.id, ['넵 확인했습니다 👍', '좋아요! 그렇게 진행할게요', '잠시만요, 확인하고 알려드릴게요'][Math.floor(Math.random() * 3)]), 2500);
     },
+    onProfiles: cb => { subs.profiles = cb; cb({}); },
+    saveProfile: async p => { profilesDemo[me.id] = p; subs.profiles && subs.profiles({ ...profilesDemo }); },
     heartbeat: async status => { presenceDemo[me.id] = { at: Date.now(), status }; subs.presence.forEach(cb => cb({ ...presenceDemo })); },
     onPresence: cb => { subs.presence.push(cb); cb({ ...presenceDemo }); },
     summarize: async text => {
@@ -261,8 +277,17 @@ function loginError(e) {
 //  사무실 + 세션
 // ======================================================================
 let sessions = [];
+function applyProfiles() {
+  office.setProfiles(Object.fromEntries(MEMBERS.map(m => [m.name, look(m)])));
+  if (me) $('me').innerHTML = `<img alt="" src="${avatar(me)}"><span>${esc(me.name)} <small>${esc(me.title || '')}</small></span>`;
+}
 function startOffice() {
   office.start($('c'), $('stage'), onOfficeEvent);
+  applyProfiles();
+  store.onProfiles(p => {
+    profiles = p; applyProfiles();
+    pushOffice(); renderChat(); renderBoard(); renderRequests();
+  }, err => toast('꾸미기 정보를 불러오지 못했어요 (' + err.code + ')'));
   const conn = $('conn');
   store.onSessions(docs => {
     conn.classList.add('on'); conn.lastChild.textContent = '실시간 연결됨';
@@ -323,7 +348,7 @@ function onOfficeEvent(kind, s) {
   if (kind === 'board') { focusBoard(); return; }
   if (kind === 'human') {
     // 내 캐릭터 → 상태 바꾸기, 다른 사람 → 채팅
-    if (s.owner === me.id) { $('status').focus(); $('status').showPicker?.(); }
+    if (s.owner === me.id) openLook();
     else if (chats[chatIdWith(s.owner)]) { active = chatIdWith(s.owner); renderChat(); $('input').focus(); }
     return;
   }
@@ -356,7 +381,7 @@ function renderPeople(log) {
     const m = byId[s.owner] || { name: s.user };
     return `<div class="who">
       <img alt="" src="${claudeAvatar(m)}" title="${esc(s.user)}님의 Claude">
-      <span><b>🤖 ${esc(s.user)}</b> <span class="proj">${esc(s.project)}</span></span>
+      <span><b>🤖 ${esc(claudeName(s.owner))}</b> <span class="proj">${esc(s.project)}</span></span>
       <span class="ago" data-ts="${s.updatedAt}">${ago(s.updatedAt)}</span>
       <span class="st">${STATE_KO[s.state] || esc(s.state)}${extra}</span>
       ${s.subs && s.subs.length ? `<span class="subs">🛗 서브에이전트 ${s.subs.length}명: ${s.subs.map(x => esc(x.desc)).join(', ')}</span>` : ''}
@@ -796,6 +821,43 @@ $('jSend').onclick = () => {
   store.send(c.id, text).then(() => { toast(`업무일지를 ${c.title}${c.peer ? '님께' : '에'} 보냈어요.`); $('jDlg').close(); })
     .catch(err => toast('보내지 못했어요 (' + (err.code || err.message) + ')'));
 };
+
+// ======================================================================
+//  🎨 꾸미기 (내 캐릭터 + 내 Claude)
+// ======================================================================
+const HUES = [0, 30, 60, 100, 140, 190, 220, 260, 300, 330];
+let draft = null;
+function openLook() {
+  draft = { ...look(me) };
+  renderLook();
+  $('lookDlg').showModal();
+}
+function renderLook() {
+  const part = (key, hueKey) => `
+    <div class="looks">${[0, 1, 2, 3, 4, 5].map(i => `<button type="button" class="lk${draft[key] === i ? ' on' : ''}" data-set="${key}" data-v="${i}" aria-label="캐릭터 ${i + 1}"><img alt="" src="${office.previewFor(i, draft[hueKey])}"></button>`).join('')}</div>
+    <div class="hues">${HUES.map(h => `<button type="button" class="hu${draft[hueKey] === h ? ' on' : ''}" data-set="${hueKey}" data-v="${h}" aria-label="옷 색 ${h}"><img alt="" src="${office.avatarFor(draft[key], h)}"></button>`).join('')}</div>`;
+  $('lookMe').innerHTML = part('char', 'hue');
+  $('lookClaude').innerHTML = part('claudeChar', 'claudeHue');
+  $('lookPrev').innerHTML = `
+    <figure><img alt="" src="${office.previewFor(draft.char, draft.hue)}"><figcaption>${esc(me.name)}</figcaption></figure>
+    <figure><img alt="" src="${office.previewFor(draft.claudeChar, draft.claudeHue)}"><figcaption>🤖 ${esc(draft.claudeName || me.name + '의 Claude')}</figcaption></figure>`;
+  if (document.activeElement !== $('lookName')) $('lookName').value = draft.claudeName;
+}
+$('lookDlg').addEventListener('click', e => {
+  const b = e.target.closest('[data-set]'); if (!b) return;
+  draft[b.dataset.set] = +b.dataset.v; renderLook();
+});
+$('lookName').addEventListener('input', () => { draft.claudeName = $('lookName').value; renderLook(); });
+$('lookBtn').onclick = openLook;
+$('lookCancel').onclick = () => $('lookDlg').close();
+$('lookForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('lookName').value.trim().slice(0, 16);
+  const p = { char: draft.char, hue: draft.hue, claudeChar: draft.claudeChar, claudeHue: draft.claudeHue, claudeName: name || `${me.name}의 Claude` };
+  $('lookDlg').close();
+  store.saveProfile(p).then(() => toast('🎨 저장했어요. 상대 화면에도 바로 바뀌어요.'))
+    .catch(err => toast('저장하지 못했어요 (' + (err.code || err.message) + ')'));
+});
 
 let toastTimer;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 6000); }

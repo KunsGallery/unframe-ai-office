@@ -373,9 +373,15 @@ function upsertActor(id, kind, data, parent) {
   }
   const prevState = a.data && a.data.state;
   a.kind = kind; a.data = data; a.parent = parent; a.leaving = false;
-  a.charIdx = charFor(kind === 'sub' ? parent.user : data.user);
-  // 사람은 원래 옷, 그 사람의 Claude는 다른 색 옷, 서브에이전트는 또 다른 색
-  a.hue = kind === 'sub' ? CLAUDE_HUE.sub : kind === 'main' ? CLAUDE_HUE.main : 0;
+  // 생김새: 각자 꾸민 모습(프로필)을 쓰고, 없으면 기본값. 서브에이전트는 그 Claude와 옷 색만 다르게
+  const owner = kind === 'sub' ? parent.user : data.user;
+  const pf = profiles.get(owner) || {};
+  if (kind === 'human') { a.charIdx = pf.char ?? charFor(owner); a.hue = pf.hue || 0; }
+  else {
+    a.charIdx = pf.claudeChar ?? charFor(owner);
+    const h = pf.claudeHue ?? CLAUDE_HUE.main;
+    a.hue = kind === 'sub' ? ((h + 90) % 360 || 90) : h;
+  }
   if (prevState && prevState !== data.state) {
     if (data.state === 'idle' && kind === 'main') { a.doneUntil = now + 2500; emit('done', data); }
     if (data.state === 'wait') emit('wait', kind === 'main' ? data : parent);
@@ -592,6 +598,8 @@ function onClick(e) {
 function onMove(e) { cv.style.cursor = hitTest(...worldPos(e)) ? 'pointer' : ''; }
 let boardBadge = '';
 const marks = new Map();
+const profiles = new Map();   // 이름 → { char, hue, claudeChar, claudeHue, claudeName }
+const claudeNameOf = user => (profiles.get(user) || {}).claudeName || `${user}의 Claude`;
 
 function roundRect(x, y, w, h, r) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
@@ -609,7 +617,7 @@ function labelOf(a) {
     const st = { meeting: '📅 회의 중', focus: '🎧 집중' }[d.status] || '';
     return { who: (marks.get(d.user) || '') + d.user, text: a.leaving ? '퇴근 🛗' : st, human: true };
   }
-  const who = a.kind === 'sub' ? '↳ ' + d.desc : (marks.get(d.user) || '') + '🤖 ' + d.user;
+  const who = a.kind === 'sub' ? '↳ ' + d.desc : (marks.get(d.user) || '') + '🤖 ' + claudeNameOf(d.user);
   if (a.leaving) return { who, text: '퇴근 🛗' };
   if (a.sleep) return { who, text: '💤' };
   switch (d.state) {
@@ -746,6 +754,20 @@ export function say(user, text) {
 // 앞에서부터 n개 책상은 사람 자리로 비워둔다
 export function setReservedDesks(n) { reservedDesks = n; }
 export const HUE = CLAUDE_HUE;
+// 각자 꾸민 생김새 { 이름: { char, hue, claudeChar, claudeHue, claudeName } } — 다음 갱신부터 반영
+export function setProfiles(obj) { profiles.clear(); for (const [k, v] of Object.entries(obj || {})) profiles.set(k, v); }
+// 꾸미기 미리보기용 전신 그림 (정면, 16x32)
+const previewCache = new Map();
+export function previewFor(idx, hue) {
+  const k = idx + ':' + hue;
+  if (!previewCache.has(k)) {
+    const sh = sheetFor(idx, hue); if (!sh) return '';
+    const c = document.createElement('canvas'); c.width = 16; c.height = 32;
+    c.getContext('2d').drawImage(sh, 16, 0, 16, 32, 0, 0, 16, 32);
+    previewCache.set(k, c.toDataURL());
+  }
+  return previewCache.get(k);
+}
 // 작업실 화이트보드 위에 띄울 글자 (예: '📋 2/5')
 export function setBoardBadge(text) { boardBadge = text || ''; }
 // 이름 앞에 붙일 표시 { 이름: '📌' }
