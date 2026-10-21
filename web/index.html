@@ -217,6 +217,18 @@
   #memoMeta { font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; }
   .stage.pipped { min-height: 80px; align-items: center; color: var(--muted); font-size: 13px; }
   .stage.pipped::after { content: '📺 사무실이 작은 창에 떠 있어요'; }
+  .pipwrap { position: relative; }
+  .pipmenu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 150px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .pipmenu[hidden] { display: none; }
+  .pipmenu button { background: none; border: 0; text-align: left; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .pipmenu button:hover { background: #3a3150; }
+  .help { max-height: 64vh; overflow-y: auto; padding-right: 4px; }
+  .help h4 { margin: 16px 0 6px; font-size: 14px; color: var(--text); }
+  .help p, .help li { color: var(--muted); font-size: 13px; margin: 3px 0; }
+  .help table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .help td { padding: 5px 8px; border-top: 1px solid var(--line); color: var(--muted); vertical-align: top; }
+  .help td:first-child { color: var(--text); white-space: nowrap; width: 1%; }
+  kbd { background: #1b1724; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font: 12px ui-monospace, Menlo, monospace; color: var(--text); }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #2f2742; border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 13px; z-index: 60; max-width: calc(100vw - 32px); }
   .toast[hidden] { display: none; }
 </style>
@@ -244,7 +256,14 @@
     </select>
     <button class="btn" id="installBtn" hidden>📲 앱 설치</button>
     <button class="btn" id="lookBtn">🎨 꾸미기</button>
-    <button class="btn" id="pipBtn" title="사무실을 항상 위에 떠 있는 작은 창으로">📺 작은 창</button>
+    <span class="pipwrap">
+      <button class="btn" id="pipBtn" title="항상 위에 떠 있는 작은 창 (단축키 P)">📺 작은 창</button>
+      <span class="pipmenu" id="pipMenu" hidden>
+        <button type="button" id="pipOffice">🏢 사무실 띄우기</button>
+        <button type="button" id="pipPet">🐾 내 펫 띄우기</button>
+      </span>
+    </span>
+    <button class="btn" id="helpBtn" title="도움말 (단축키 ?)">❓ 도움말</button>
     <button class="btn" id="notify" aria-pressed="false">🔕 알림 꺼짐</button>
     <button class="btn" id="journalBtn">📓 업무일지</button>
     <button class="btn" id="connectBtn">🔌 내 PC 연결</button>
@@ -369,6 +388,82 @@
       <button class="btn primary" type="submit">저장</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="helpDlg" class="wide">
+  <div class="jtools"><h3 class="grow" style="margin:0">❓ 도움말</h3><button class="btn primary" id="helpClose">닫기</button></div>
+  <div class="help">
+    <p>Claude Office는 우리 팀의 Claude Code 작업을 픽셀 사무실로 보여주고, 메시지·할 일·확인 요청·업무일지를 한곳에서 쓰는 사무실이에요.</p>
+
+    <h4>⌨️ 단축키</h4>
+    <table>
+      <tr><td><kbd>?</kbd></td><td>도움말 열기·닫기</td></tr>
+      <tr><td><kbd>M</kbd></td><td>메시지 입력칸으로</td></tr>
+      <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>메시지 보내기 / 줄 바꾸기</td></tr>
+      <tr><td><kbd>B</kbd></td><td>화이트보드(할 일 추가)</td></tr>
+      <tr><td><kbd>R</kbd></td><td>확인 요청 보내기</td></tr>
+      <tr><td><kbd>J</kbd></td><td>업무일지</td></tr>
+      <tr><td><kbd>L</kbd></td><td>꾸미기 (내 모습·내 Claude·내 펫)</td></tr>
+      <tr><td><kbd>P</kbd></td><td>사무실 작은 창 띄우기</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>열린 창 닫기</td></tr>
+    </table>
+    <p>입력칸에 글을 쓰는 중에는 단축키가 동작하지 않아요.</p>
+
+    <h4>🏢 사무실 읽는 법</h4>
+    <table>
+      <tr><td>📚 자료실</td><td>Claude가 파일을 읽거나 검색하는 중</td></tr>
+      <tr><td>⌨️ 작업실</td><td>코드를 고치는 중 (모니터가 켜져요). 앞쪽 책상은 사람 자리</td></tr>
+      <tr><td>🖥 서버실</td><td>명령을 실행하는 중 (테스트·빌드·커밋)</td></tr>
+      <tr><td>📡 통신실</td><td>웹을 조사하는 중. 사람은 회의할 때 여기 앉아요</td></tr>
+      <tr><td>☕ 라운지</td><td>일을 끝내고 쉬는 중</td></tr>
+      <tr><td>🛗 엘리베이터</td><td>출근·퇴근</td></tr>
+      <tr><td>흰 이름표</td><td>사이트를 열어둔 사람</td></tr>
+      <tr><td>🤖 ○○의 Claude</td><td>그 사람의 Claude. 옆에 지금 쓰는 도구가 보여요</td></tr>
+      <tr><td>↳ 노란 이름표</td><td>Claude가 일을 나눠 맡긴 보조 작업자(서브에이전트)</td></tr>
+      <tr><td>노란 "…" 말풍선</td><td>Claude가 승인을 기다리는 중 — 맡긴 사람이 터미널에서 승인해야 진행돼요</td></tr>
+      <tr><td>초록 체크</td><td>방금 작업을 끝냈어요</td></tr>
+      <tr><td>📌</td><td>답을 기다리는 확인 요청을 보낸 사람</td></tr>
+    </table>
+
+    <h4>🚶 걸어 다니기</h4>
+    <p>사무실 바닥을 클릭(휴대폰은 탭)하면 내 캐릭터가 걸어가요. 도착한 곳에 따라 기능이 실행돼요.</p>
+    <table>
+      <tr><td>상대 옆</td><td>채팅창이 열리고 "똑똑" 인사말이 준비돼요. Enter로 보내요</td></tr>
+      <tr><td>화이트보드 앞</td><td>할 일 목록으로 이동</td></tr>
+      <tr><td>자료실</td><td>업무일지 열기</td></tr>
+      <tr><td>통신실</td><td>"회의 중"이 되고 회의 초대를 보낼지 물어요. 두 사람 모두 회의 중이면 📝 회의 메모 칸이 열려요</td></tr>
+      <tr><td>라운지</td><td>"휴식"이 되고 커피 초대를 보낼지 물어요</td></tr>
+      <tr><td>작업실</td><td>"근무 중"으로 돌아와요</td></tr>
+    </table>
+    <p>상태 메뉴를 직접 바꾸면 캐릭터가 그 상태의 자리로 돌아가요. 내 캐릭터를 누르면 꾸미기, 상대를 누르면 채팅이 열려요.</p>
+
+    <h4>💼 내 상태</h4>
+    <p>근무 중 · 회의 중 · 🎧 집중(메시지·요청 알림을 잠시 끔, 내 Claude 알림은 유지) · ☕ 휴식 · 외근·퇴근(사무실에서 나감). 사이트를 닫으면 2~3분 뒤 자동으로 퇴장해요.</p>
+
+    <h4>📋 화이트보드 · 🙋 확인 요청 · 📓 업무일지</h4>
+    <ul>
+      <li>화이트보드: 할 일에 담당자·마감일을 정해요. 마감 지난 일은 빨간색, ✎로 수정, "내 담당"만 보기. 체크하면 바로 확인 요청을 보낼 수 있어요.</li>
+      <li>확인 요청: 내용과 미리보기 링크를 보내면 상대가 "확인 완료 / 수정 필요"로 답해요. 요청과 답은 채팅에도 남아요.</li>
+      <li>업무일지: 날짜를 고르면 사람·프로젝트별 작업, 커밋, 회의 메모, 할 일, 확인 요청이 자동으로 정리돼요. ✨ AI 요약, 복사, 채팅으로 보내기.</li>
+    </ul>
+
+    <h4>🎨 꾸미기 · 🐾 펫</h4>
+    <p>내 모습, 내 Claude의 모습과 이름, 내 펫(강아지·고양이·토끼)과 펫 이름을 골라요. 두 사람 화면에 똑같이 보여요. 펫은 주인을 따라다니고, 누르면 하트를 보내요.</p>
+
+    <h4>📺 작은 창</h4>
+    <ul>
+      <li>🏢 사무실 띄우기: 사무실이 항상 맨 위에 떠 있는 작은 창으로 보여요. 창 안에서도 클릭할 수 있어요.</li>
+      <li>🐾 내 펫 띄우기: 내 펫이 크게 보이고, <b>내 Claude 상태를 펫이 알려줘요</b> — 일하는 중엔 돌아다니고, 승인을 기다리면 "…"를 띄우며 폴짝폴짝, 작업이 끝나면 하트, 쉴 땐 앉아 있어요.</li>
+      <li>작은 창은 한 번에 하나만 열 수 있고, Chrome·Edge에서 동작해요 (Safari는 사무실 보기만 가능).</li>
+    </ul>
+
+    <h4>🔔 알림 · 📲 앱 설치 · 🔌 내 PC 연결</h4>
+    <ul>
+      <li>알림을 켜면 새 메시지, 확인 요청, 맡겨진 할 일, 내 Claude의 승인 대기(5·15분 뒤 재알림)·완료를 소리와 화면 알림으로 알려줘요.</li>
+      <li>앱 설치: 휴대폰·PC 홈 화면에 아이콘을 만들어요 (아이폰은 Safari 공유 → 홈 화면에 추가).</li>
+      <li>내 PC 연결: 명령을 복사해 터미널에 붙여넣으면 내 Claude Code가 사무실에 출근해요. 연결 코드는 다른 사람에게 보내지 마세요.</li>
+    </ul>
+  </div>
 </dialog>
 
 <dialog id="iosDlg">

@@ -1009,7 +1009,65 @@ function openVideoPip() {
   return pipVideo.requestPictureInPicture();
 }
 $('pipBtn').addEventListener('pointerenter', () => { if (!('documentPictureInPicture' in window)) prepareVideo(); });
-$('pipBtn').onclick = () => openPip().catch(err => toast('작은 창을 열지 못했어요: ' + err.message));
+// 📺 버튼: 열려 있으면 닫고, 아니면 "사무실 / 내 펫" 중 고르기
+$('pipBtn').onclick = () => {
+  if (pipWin) { pipWin.close(); return; }
+  if (document.pictureInPictureElement) { document.exitPictureInPicture(); return; }
+  $('pipMenu').hidden = !$('pipMenu').hidden;
+};
+$('pipOffice').onclick = () => { $('pipMenu').hidden = true; openPip().catch(err => toast('작은 창을 열지 못했어요: ' + err.message)); };
+$('pipPet').onclick = () => { $('pipMenu').hidden = true; openPetPip().catch(err => toast('펫 창을 열지 못했어요: ' + err.message)); };
+document.addEventListener('click', e => { if (!e.target.closest('#pipBtn, #pipMenu')) $('pipMenu').hidden = true; });
+
+// 🐾 펫 작은 창: 내 펫이 크게, 내 Claude 상태에 따라 반응
+function petState() {
+  const l = look(me), mine = sessions.filter(s => s.owner === me.id), cn = claudeName(me.id);
+  const wait = mine.find(s => s.state === 'wait');
+  const work = mine.find(s => s.state !== 'idle' && s.state !== 'wait');
+  const done = mine.some(s => s.state === 'idle' && Date.now() - s.updatedAt < 5000);
+  const mood = wait ? 'wait' : work ? 'work' : done ? 'done' : 'idle';
+  const line = wait ? `🙋 ${cn}가 승인을 기다려요` : work ? `${cn} · ${(STATE_KO[work.state] || '').replace(/^\S+\s/, '')}` : done ? `✅ ${cn} 작업 완료!` : mine.length ? '☕ 쉬는 중' : `${cn} 출근 전`;
+  return { kind: PET_KO[l.pet] ? l.pet : 'dog', name: petNameOf(me, l), mood, line };
+}
+async function openPetPip() {
+  if (!('documentPictureInPicture' in window)) { toast('펫 작은 창은 Chrome·Edge에서 쓸 수 있어요.'); return; }
+  let w;
+  try { w = await documentPictureInPicture.requestWindow({ width: 280, height: 240 }); }
+  catch { toast('이 창에서는 작은 창을 열 수 없어요. Chrome이나 Edge에서 사이트를 직접 열어 주세요.'); return; }
+  pipWin = w;
+  const d = w.document;
+  d.title = petNameOf(me);
+  const st = d.createElement('style');
+  st.textContent = 'html,body{margin:0;height:100%;background:#1b1724;overflow:hidden}canvas{display:block;width:100%;height:100%;cursor:pointer}';
+  d.head.appendChild(st);
+  const cv = d.createElement('canvas'); d.body.appendChild(cv);
+  const view = office.createPetView(cv, w, petState);
+  $('pipBtn').textContent = '📺 작은 창 닫기';
+  w.addEventListener('pagehide', () => { view.stop(); pipWin = null; $('pipBtn').textContent = '📺 작은 창'; });
+}
+
+// ======================================================================
+//  ❓ 도움말 + ⌨️ 단축키
+// ======================================================================
+$('helpBtn').onclick = () => $('helpDlg').showModal();
+$('helpClose').onclick = () => $('helpDlg').close();
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || !me) return;
+  const t = e.target;
+  if (t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
+  // 한글 입력 상태에서도 되도록 글자 대신 자판 위치(code)로 판단
+  const help = e.code === 'Slash' && e.shiftKey;
+  if (document.querySelector('dialog[open]') && !help) return;
+  const go = fn => { e.preventDefault(); fn(); };
+  if (help) go(() => $('helpDlg').open ? $('helpDlg').close() : $('helpDlg').showModal());
+  else if (e.shiftKey) return;
+  else if (e.code === 'KeyM') go(() => $('input').focus());
+  else if (e.code === 'KeyB') go(focusBoard);
+  else if (e.code === 'KeyJ') go(() => $('journalBtn').click());
+  else if (e.code === 'KeyR') go(() => openRequestDialog(''));
+  else if (e.code === 'KeyL') go(openLook);
+  else if (e.code === 'KeyP') go(() => openPip().catch(err => toast('작은 창을 열지 못했어요: ' + err.message)));
+});
 
 let toastTimer;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 6000); }

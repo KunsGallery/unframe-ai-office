@@ -861,6 +861,70 @@ export function setPets(list) {
     return Object.assign(p, n);
   });
 }
+// 🐾 펫 작은 창: 내 펫 하나를 크게 그리고, 내 Claude 상태에 따라 반응한다
+// getState() → { kind, name, mood: 'wait'|'done'|'work'|'idle', line }
+export function createPetView(canvas, win, getState) {
+  const g = canvas.getContext('2d');
+  const pet = { x: 0.5, dir: 'right', walking: false, until: 0, target: 0.5, heartUntil: 0, hopUntil: 0 };
+  let lastMood = null, alive = true, last = performance.now();
+  function size() {
+    const d = win.devicePixelRatio || 1;
+    canvas.width = Math.round(canvas.clientWidth * d); canvas.height = Math.round(canvas.clientHeight * d);
+  }
+  size(); win.addEventListener('resize', size);
+  canvas.addEventListener('click', () => { pet.heartUntil = performance.now() + 2000; pet.hopUntil = performance.now() + 600; });
+  function tick() {
+    if (!alive || win.closed) return;
+    const t = performance.now(), dt = Math.min(.25, (t - last) / 1000); last = t;
+    const st = getState() || {};
+    if (st.mood !== lastMood) { if (st.mood === 'done') pet.heartUntil = t + 3000; lastMood = st.mood; }
+    const W = canvas.width, H = canvas.height, S = Math.max(2, Math.floor(Math.min(W / 48, H / 40)));
+    // 배경: 라운지 바닥을 크게
+    g.imageSmoothingEnabled = false;
+    // 위쪽은 라운지 벽, 아래쪽 40%만 바닥
+    const floorY = Math.round(H * 0.58);
+    g.fillStyle = '#2a2236'; g.fillRect(0, 0, W, floorY);
+    g.fillStyle = '#3a2f4a'; g.fillRect(0, floorY - S * 2, W, S * 2);
+    if (floorCanvas) { const fs = S * 8; for (let y = floorY; y < H; y += fs) for (let x = 0; x < W; x += fs) g.drawImage(floorCanvas, 4 * T, 22 * T, 16, 16, x, y, fs, fs); }
+    // 움직임: 일하는 중엔 돌아다니고, 쉴 땐 앉고, 승인 대기면 제자리에서 폴짝
+    const mood = st.mood || 'idle';
+    if (mood === 'work' && !pet.walking && t > pet.until) { pet.target = 0.15 + Math.random() * 0.7; pet.walking = true; }
+    if (mood !== 'work') pet.walking = false;
+    if (pet.walking) {
+      const dx = pet.target - pet.x, step = 0.12 * dt;
+      pet.dir = dx > 0 ? 'right' : 'left';
+      if (Math.abs(dx) <= step) { pet.x = pet.target; pet.walking = false; pet.until = t + 1500 + Math.random() * 3000; } else pet.x += Math.sign(dx) * step;
+    }
+    const hop = mood === 'wait' ? Math.abs(Math.sin(t / 180)) * 6 * S : pet.hopUntil > t ? Math.sin((pet.hopUntil - t) / 600 * Math.PI) * 5 * S : 0;
+    const img = IMG[PET_IMG[st.kind]] || IMG.pet_claudio;
+    const baseY = H - S * 10, f = Math.floor(t / (pet.walking ? 150 : 300)) % 3;
+    const cx = Math.round(pet.x * W);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(cx, baseY, 7 * S, 2 * S, 0, 0, 7); g.fill();
+    if (pet.walking) {
+      const x = cx - 16 * S, y = baseY - 32 * S + 6 * S - hop;
+      if (pet.dir === 'left') { g.save(); g.translate(x + 32 * S, y); g.scale(-1, 1); g.drawImage(img, f * 32, 64, 32, 32, 0, 0, 32 * S, 32 * S); g.restore(); }
+      else g.drawImage(img, f * 32, 64, 32, 32, x, y, 32 * S, 32 * S);
+    } else {
+      g.drawImage(img, (3 + f) * 16, 0, 16, 32, cx - 8 * S, baseY - 32 * S + 6 * S - hop, 16 * S, 32 * S);
+    }
+    // 말풍선: 승인 대기 "…", 완료·쓰다듬기 하트, 쉬는 중 오래되면 Zz
+    const bub = mood === 'wait' ? BUBBLES.wait : pet.heartUntil > t ? BUBBLES.heart : null;
+    if (bub) g.drawImage(bub, cx + 5 * S, baseY - 21 * S - hop, 11 * S, 12 * S);
+    // 글자: 펫 이름과 내 Claude 상태
+    const F = Math.round(Math.max(11, S * 4.2));
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    g.font = `700 ${F}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+    g.fillStyle = '#f4ecff'; g.fillText(st.name || '', W / 2, F * 0.6);
+    g.font = `${Math.round(F * .85)}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+    g.fillStyle = mood === 'wait' ? '#ffd166' : '#c9bfdc';
+    let line = st.line || '';
+    while (line.length > 1 && g.measureText(line).width > W - F) line = line.slice(0, -2) + '…';
+    g.fillText(line, W / 2, F * 1.9);
+    win.requestAnimationFrame(tick);
+  }
+  win.requestAnimationFrame(tick);
+  return { stop() { alive = false; } };
+}
 // 꾸미기 미리보기용 펫 그림 (정면 쉬는 모습)
 export function petPreview(kind) {
   const img = IMG[PET_IMG[kind]]; if (!img) return '';
