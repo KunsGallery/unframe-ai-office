@@ -898,7 +898,7 @@ const HUES = [0, 30, 60, 100, 140, 190, 220, 260, 300, 330];
 let draft = null;
 function openLook() {
   draft = { ...look(me) };
-  renderLook();
+  renderLook(); renderCareSettings();
   $('lookDlg').showModal();
 }
 function renderLook() {
@@ -1019,16 +1019,77 @@ $('pipOffice').onclick = () => { $('pipMenu').hidden = true; openPip().catch(err
 $('pipPet').onclick = () => { $('pipMenu').hidden = true; openPetPip().catch(err => toast('펫 창을 열지 못했어요: ' + err.message)); };
 document.addEventListener('click', e => { if (!e.target.closest('#pipBtn, #pipMenu')) $('pipMenu').hidden = true; });
 
-// 🐾 펫 작은 창: 내 펫이 크게, 내 Claude 상태에 따라 반응
+// 🐾 펫 작은 창: 내 펫이 크게, 내 Claude 상태를 말풍선으로 알려주고 환기 알림도 챙겨준다
+const SAY_BY_STATE = {
+  read: d => `${d || '자료'} 읽는 중이에요`, edit: d => `${d || '코드'} 고치는 중이에요`, bash: d => `${d || '명령'} 실행 중이에요`,
+  web: d => `${d || '웹'} 찾아보는 중이에요`, think: d => d === '새 지시 받음' ? '지시 받았어요! 생각 중…' : '생각하는 중…', plan: () => '계획 세우는 중이에요',
+};
 function petState() {
   const l = look(me), mine = sessions.filter(s => s.owner === me.id), cn = claudeName(me.id);
   const wait = mine.find(s => s.state === 'wait');
   const work = mine.find(s => s.state !== 'idle' && s.state !== 'wait');
-  const done = mine.some(s => s.state === 'idle' && Date.now() - s.updatedAt < 5000);
-  const mood = wait ? 'wait' : work ? 'work' : done ? 'done' : 'idle';
-  const line = wait ? `🙋 ${cn}가 승인을 기다려요` : work ? `${cn} · ${(STATE_KO[work.state] || '').replace(/^\S+\s/, '')}` : done ? `✅ ${cn} 작업 완료!` : mine.length ? '☕ 쉬는 중' : `${cn} 출근 전`;
-  return { kind: PET_KO[l.pet] ? l.pet : 'dog', name: petNameOf(me, l), mood, line };
+  const done = mine.find(s => s.state === 'idle' && Date.now() - s.updatedAt < 15000);
+  let mood = wait ? 'wait' : work ? 'work' : done ? 'done' : 'idle', say = '';
+  if (activeCare) { mood = 'remind'; say = `${CARE[activeCare].emoji} ${CARE[activeCare].say} (누르면 완료)`; }
+  else if (wait) say = `🙋 ${wait.detail ? wait.detail.replace(/ 필요$/, '') + '이 필요해요!' : '승인을 기다려요!'} 터미널을 봐주세요`;
+  else if (work) say = (SAY_BY_STATE[work.state] || (() => '일하는 중이에요'))(work.detail);
+  else if (done) say = `✅ ${done.project} 작업 끝났어요!`;
+  const cups = careCount('water');
+  const line = `${cn}${mine.length ? '' : ' · 출근 전'}${cups ? ` · 💧${cups}잔` : ''}`;
+  return { kind: PET_KO[l.pet] ? l.pet : 'collie', name: petNameOf(me, l), mood, line, say };
 }
+const petTap = () => { if (activeCare) careDone(); };
+
+// ======================================================================
+//  💧 환기 알림 (이 기기에만 저장): 물 · 스트레칭 · 눈 쉬기
+// ======================================================================
+const CARE = {
+  water:   { emoji: '💧', name: '물 마시기', say: '물 한 잔 마셔요!', done: '마셨어요', def: 60 },
+  stretch: { emoji: '🙆', name: '스트레칭', say: '일어나서 스트레칭해요!', done: '했어요', def: 50 },
+  eyes:    { emoji: '👀', name: '눈 쉬기', say: '20초만 먼 곳을 봐요', done: '쉬었어요', def: 20 },
+};
+const careKey = () => 'office-care-' + today();
+const loadJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) || d; } catch { return d; } };
+const saveJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let careCfg = loadJSON('office-care-cfg', { water: { on: true, min: 60 }, stretch: { on: true, min: 50 }, eyes: { on: false, min: 20 } });
+let careLast = {}, activeCare = null, careShownAt = 0;
+const careCount = k => (loadJSON(careKey(), {})[k] || 0);
+function careTick() {
+  if (!me || document.querySelector('#lookDlg[open]')) return;
+  if (!['work', 'focus', 'break'].includes(myStatus)) return;   // 회의·외근·퇴근 중엔 쉬어요
+  const now = Date.now();
+  if (activeCare) { if (now - careShownAt > 10 * 60_000) { careLast[activeCare] = now - (careCfg[activeCare].min - 10) * 60_000; activeCare = null; } return; }   // 10분 뒤 다시
+  for (const k of Object.keys(CARE)) {
+    const c = careCfg[k]; if (!c || !c.on) continue;
+    if (!careLast[k]) careLast[k] = now;
+    if (now - careLast[k] >= c.min * 60_000) {
+      activeCare = k; careShownAt = now;
+      chime('msg'); notify(`${CARE[k].emoji} ${CARE[k].name}`, CARE[k].say);
+      toastAction(`${CARE[k].emoji} ${CARE[k].say}`, CARE[k].done, careDone);
+      return;
+    }
+  }
+}
+function careDone() {
+  if (!activeCare) return;
+  const k = activeCare, counts = loadJSON(careKey(), {});
+  counts[k] = (counts[k] || 0) + 1; saveJSON(careKey(), counts);
+  careLast[k] = Date.now(); activeCare = null;
+  toast(k === 'water' ? `💧 잘했어요! 오늘 ${counts[k]}잔째` : `${CARE[k].emoji} 잘했어요! 오늘 ${counts[k]}번째`);
+}
+setInterval(careTick, 30_000);
+function renderCareSettings() {
+  $('careSet').innerHTML = Object.entries(CARE).map(([k, c]) => `
+    <label class="carerow"><input type="checkbox" data-care="${k}" ${careCfg[k].on ? 'checked' : ''}> ${c.emoji} ${c.name}
+      <select data-caremin="${k}">${[10, 20, 30, 45, 50, 60, 90, 120].map(m => `<option value="${m}" ${careCfg[k].min === m ? 'selected' : ''}>${m}분마다</option>`).join('')}</select>
+      <span class="carecnt">오늘 ${careCount(k)}${k === 'water' ? '잔' : '번'}</span></label>`).join('');
+}
+document.addEventListener('change', e => {
+  const k = e.target.dataset.care || e.target.dataset.caremin; if (!k || !careCfg[k]) return;
+  if (e.target.dataset.care) careCfg[k].on = e.target.checked; else careCfg[k].min = +e.target.value;
+  careLast[k] = Date.now(); saveJSON('office-care-cfg', careCfg);
+});
+
 async function openPetPip() {
   if (!('documentPictureInPicture' in window)) { toast('펫 작은 창은 Chrome·Edge에서 쓸 수 있어요.'); return; }
   let w;
@@ -1041,7 +1102,7 @@ async function openPetPip() {
   st.textContent = 'html,body{margin:0;height:100%;background:#1b1724;overflow:hidden}canvas{display:block;width:100%;height:100%;cursor:pointer}';
   d.head.appendChild(st);
   const cv = d.createElement('canvas'); d.body.appendChild(cv);
-  const view = office.createPetView(cv, w, petState);
+  const view = office.createPetView(cv, w, petState, petTap);
   $('pipBtn').textContent = '📺 작은 창 닫기';
   w.addEventListener('pagehide', () => { view.stop(); pipWin = null; $('pipBtn').textContent = '📺 작은 창'; });
 }

@@ -213,6 +213,9 @@
 
   .lk.pet { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.1; }
   .petlbl { font-size: 10px; color: var(--muted); }
+  .carerow { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; }
+  .carerow select { width: auto !important; flex: 0 0 auto; padding: 3px 6px; }
+  .carecnt { color: var(--muted); font-size: 11px; margin-left: auto; }
   .nopet { display: inline-grid; place-items: center; width: 32px; height: 64px; font-size: 11px; color: var(--muted); line-height: 1.2; }
   .memo { width: 100%; min-height: 110px; resize: vertical; background: #1b1724; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; font-size: 13px; }
   .memo:focus { outline: none; border-color: var(--accent); }
@@ -385,6 +388,8 @@
     <div id="lookPet"></div>
     <label class="f" for="petName">펫 이름</label>
     <input type="text" id="petName" maxlength="12">
+    <h4>💧 환기 알림 <small style="font-weight:400;color:var(--muted)">이 기기에만 저장 · 근무·집중·휴식 중에만</small></h4>
+    <div id="careSet"></div>
     <div class="row">
       <button class="btn" type="button" id="lookCancel">취소</button>
       <button class="btn primary" type="submit">저장</button>
@@ -455,7 +460,8 @@
     <h4>📺 작은 창</h4>
     <ul>
       <li>🏢 사무실 띄우기: 사무실이 항상 맨 위에 떠 있는 작은 창으로 보여요. 창 안에서도 클릭할 수 있어요.</li>
-      <li>🐾 내 펫 띄우기: 내 펫이 크게 보이고, <b>내 Claude 상태를 펫이 알려줘요</b> — 일하는 중엔 돌아다니고, 승인을 기다리면 "…"를 띄우며 폴짝폴짝, 작업이 끝나면 하트, 쉴 땐 앉아 있어요.</li>
+      <li>🐾 내 펫 띄우기: 내 펫이 크게 보이고, <b>내 Claude 상태를 말풍선으로 알려줘요</b> — "README.md 고치는 중이에요", 승인을 기다리면 노란 말풍선과 폴짝폴짝, 작업이 끝나면 "작업 끝났어요!", 쉴 땐 앉아 있어요.</li>
+      <li>💧 환기 알림: 물 마시기·스트레칭·눈 쉬기를 정한 간격마다 펫과 알림으로 챙겨줘요. 펫을 누르거나 알림의 버튼을 누르면 완료돼요. 꾸미기에서 켜고 끄고 간격을 바꿔요.</li>
       <li>작은 창은 한 번에 하나만 열 수 있고, Chrome·Edge에서 동작해요 (Safari는 사무실 보기만 가능).</li>
     </ul>
 

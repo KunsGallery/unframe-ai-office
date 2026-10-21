@@ -942,8 +942,9 @@ export function setPets(list) {
   });
 }
 // 🐾 펫 작은 창: 내 펫 하나를 크게 그리고, 내 Claude 상태에 따라 반응한다
-// getState() → { kind, name, mood: 'wait'|'done'|'work'|'idle', line }
-export function createPetView(canvas, win, getState) {
+// getState() → { kind, name, mood: 'wait'|'done'|'work'|'idle'|'remind', line, say }
+// say: 펫이 말풍선으로 하는 말. onTap: 펫을 눌렀을 때 (알림 "했어요" 처리 등)
+export function createPetView(canvas, win, getState, onTap) {
   const g = canvas.getContext('2d');
   const pet = { x: 0.5, dir: 'right', walking: false, until: 0, target: 0.5, heartUntil: 0, hopUntil: 0 };
   let lastMood = null, alive = true, last = performance.now();
@@ -952,7 +953,7 @@ export function createPetView(canvas, win, getState) {
     canvas.width = Math.round(canvas.clientWidth * d); canvas.height = Math.round(canvas.clientHeight * d);
   }
   size(); win.addEventListener('resize', size);
-  canvas.addEventListener('click', () => { pet.heartUntil = performance.now() + 2000; pet.hopUntil = performance.now() + 600; });
+  canvas.addEventListener('click', () => { pet.heartUntil = performance.now() + 2000; pet.hopUntil = performance.now() + 600; onTap && onTap(); });
   function tick() {
     if (!alive || win.closed) return;
     const t = performance.now(), dt = Math.min(.25, (t - last) / 1000); last = t;
@@ -975,7 +976,7 @@ export function createPetView(canvas, win, getState) {
       pet.dir = dx > 0 ? 'right' : 'left';
       if (Math.abs(dx) <= step) { pet.x = pet.target; pet.walking = false; pet.until = t + 1500 + Math.random() * 3000; } else pet.x += Math.sign(dx) * step;
     }
-    const hop = mood === 'wait' ? Math.abs(Math.sin(t / 180)) * 6 * S : pet.hopUntil > t ? Math.sin((pet.hopUntil - t) / 600 * Math.PI) * 5 * S : 0;
+    const hop = mood === 'wait' || mood === 'remind' ? Math.abs(Math.sin(t / (mood === 'remind' ? 260 : 180))) * (mood === 'remind' ? 3 : 6) * S : pet.hopUntil > t ? Math.sin((pet.hopUntil - t) / 600 * Math.PI) * 5 * S : 0;
     const img = IMG[PET_IMG[st.kind]] || IMG.pet_claudio;
     const baseY = H - S * 10, f = Math.floor(t / (pet.walking ? 150 : 300)) % 3;
     const cx = Math.round(pet.x * W);
@@ -988,8 +989,26 @@ export function createPetView(canvas, win, getState) {
       g.drawImage(img, (3 + f) * 16, 0, 16, 32, cx - 8 * S, baseY - 32 * S + 6 * S - hop, 16 * S, 32 * S);
     }
     // 말풍선: 승인 대기 "…", 완료·쓰다듬기 하트, 쉬는 중 오래되면 Zz
-    const bub = mood === 'wait' ? BUBBLES.wait : pet.heartUntil > t ? BUBBLES.heart : null;
-    if (bub) g.drawImage(bub, cx + 5 * S, baseY - 21 * S - hop, 11 * S, 12 * S);
+    // 말풍선: 할 말이 있으면 글자 말풍선, 없으면 아이콘 말풍선
+    const F0 = Math.round(Math.max(11, S * 3.6));
+    if (st.say) {
+      g.font = `600 ${F0}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+      const maxW = W - F0 * 1.5, words = [...st.say], lines = [''];
+      for (const ch of words) { const tryL = lines[lines.length - 1] + ch; if (g.measureText(tryL).width > maxW - F0 && lines.length < 2) lines.push(ch.trimStart()); else lines[lines.length - 1] = tryL; }
+      if (g.measureText(lines[lines.length - 1]).width > maxW - F0) { let l = lines[lines.length - 1]; while (l.length > 1 && g.measureText(l + '…').width > maxW - F0) l = l.slice(0, -1); lines[lines.length - 1] = l + '…'; }
+      const bw = Math.min(maxW, Math.max(...lines.map(l => g.measureText(l).width)) + F0 * 1.2), bh = lines.length * F0 * 1.3 + F0 * 0.7;
+      const headY = baseY - 18 * S - hop, bx = Math.max(F0 * .4, Math.min(W - bw - F0 * .4, cx - bw / 2)), by = Math.max(F0 * 2.9, headY - bh - S * 3);
+      const warm = mood === 'remind', alert = mood === 'wait';
+      g.fillStyle = alert ? '#ffd166' : warm ? '#d8f3e3' : '#ffffff'; g.strokeStyle = '#555566'; g.lineWidth = Math.max(1, S / 2);
+      g.beginPath(); g.roundRect(bx, by, bw, bh, F0 * .5); g.fill(); g.stroke();
+      g.beginPath(); g.moveTo(cx - S * 2, by + bh - 1); g.lineTo(cx, by + bh + S * 3); g.lineTo(cx + S * 2, by + bh - 1); g.fill();
+      g.fillStyle = '#1b1624'; g.textAlign = 'center'; g.textBaseline = 'top';
+      lines.forEach((l, i) => g.fillText(l, bx + bw / 2, by + F0 * .35 + i * F0 * 1.3));
+    } else {
+      const bub = mood === 'wait' ? BUBBLES.wait : pet.heartUntil > t ? BUBBLES.heart : null;
+      if (bub) g.drawImage(bub, cx + 5 * S, baseY - 21 * S - hop, 11 * S, 12 * S);
+    }
+    if (st.say && pet.heartUntil > t) g.drawImage(BUBBLES.heart, cx + 7 * S, baseY - 16 * S - hop, 8 * S, 9 * S);
     // 글자: 펫 이름과 내 Claude 상태
     const F = Math.round(Math.max(11, S * 4.2));
     g.textAlign = 'center'; g.textBaseline = 'top';
