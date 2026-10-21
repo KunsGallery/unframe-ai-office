@@ -551,7 +551,7 @@ function bubbleOf(a) {
 //  반려동물 (라운지를 돌아다님, 클릭하면 하트)
 // ======================================================================
 let pets = [];
-const PET_IMG = { dog: 'pet_claudio', cat: 'pet_gitcat', rabbit: 'pet_rabbit' };
+const PET_IMG = { dog: 'pet_claudio', cat: 'pet_gitcat', rabbit: 'pet_rabbit', collie: 'pet_collie', husky: 'pet_husky', golden: 'pet_golden' };
 const LOUNGE = () => { const t = []; for (let r = 17; r < ROWS; r++) for (let c = 1; c <= 16; c++) if (walkable(c, r) && MAP[r][c] === 'O') t.push([c, r]); return t; };
 const tileAt = o => [Math.round((o.x - 8) / T), Math.round((o.y - 8) / T)];
 function stepPet(p, dt) {
@@ -579,6 +579,82 @@ function stepPet(p, dt) {
     p.path = findPath(...tileAt(p), gc, gr) || []; p.goal = null;
     if (!p.path.length) p.until = now + 2000;
   }
+}
+
+// 강아지 3종(보더콜리·허스키·골든 리트리버)도 같은 규격으로 직접 그린다
+// 글자: B 몸 · D 진한 부분(귀·등) · L 밝은 부분(얼굴·가슴·발) · K 눈 · N 코 · P 귀 안쪽 · T 꼬리
+const DOG_BREEDS = {
+  collie: { col: { B: '#25212b', D: '#151218', L: '#f4f1ec', K: '#e9d7a6', N: '#151218', P: '#3a3440', T: '#25212b', W: '#f4f1ec' }, ears: 'semi', tail: 'down', blaze: true },
+  husky:  { col: { B: '#7d8496', D: '#4b5160', L: '#f4f2ee', K: '#68c4ff', N: '#1d1b22', P: '#e3a5b0', T: '#7d8496', W: '#f4f2ee' }, ears: 'up', tail: 'up', mask: true },
+  golden: { col: { B: '#d9973c', D: '#b8732a', L: '#f0c77f', K: '#2b1d16', N: '#2b1d16', P: '#b8732a', T: '#d9973c', W: '#f0c77f' }, ears: 'flop', tail: 'down' },
+};
+function makeDogSheet(breed) {
+  const bd = DOG_BREEDS[breed], COL = bd.col;
+  const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+  const x = c.getContext('2d');
+  const put = (rows, ox, oy) => rows.forEach((row, r) => [...row].forEach((ch, i) => { if (COL[ch]) { x.fillStyle = COL[ch]; x.fillRect(ox + i, oy + r, 1, 1); } }));
+  const pad = r => (r + '................').slice(0, 16);
+  // 정면 (앉은 모습)
+  const EARS = {
+    up:   ['...D.......D....', '..DPD.....DPD...', '..DPD.....DPD...'],
+    semi: ['................', '.DDD.......DDD..', '..DDD.....DDD...'],
+    flop: ['................', '................', '................'],
+  }[bd.ears];
+  const face = bd.mask
+    ? ['...DDDDDDDDD....', '..DDBLDDDLBDD...', '..BLKLLLLLKLB...', '..BLLLLLLLLLB...', '...BLLLNLLLB....', '....LLLLLLL.....']
+    : bd.blaze
+    ? ['...DDDDLDDDD....', '..DDDDDLDDDDD...', '..DBKBBLBBKBD...', '..BBBBLLLBBBB...', '...BBLLNLLBB....', '....LLLLLLL.....']
+    : ['....BBBBBBB.....', '...BBBBBBBBB....', '..BBKBBBBBKBB...', '..BBBLLLLLBBB...', '...BLLLNLLLB....', '....LLLLLLL.....'];
+  const body = ['...BBLLLLLBB....', '..BBBLLLLLBBB...', '..BBBLLLLLBBB...', '..BBBBLLLBBBB...', '...BB.....BB....', '...LL.....LL....'];
+  let FRONT = [...EARS, ...face, ...body].map(pad);
+  if (bd.ears === 'flop') FRONT = FRONT.map((r, i) => i >= 4 && i <= 9 ? r.slice(0, 1) + 'DD' + r.slice(3, 12) + 'DD' + r.slice(14) : i === 3 ? '...DBBBBBBBD....' : r);
+  const BACK = FRONT.map((r, i) => {
+    if (i < 3) return r;
+    if (i >= 3 && i <= 8) return r.replace(/[KNL]/g, 'B').replace(/P/g, 'D');
+    if (i === 9 && bd.tail === 'up') return '...BBBTTTBB.....';
+    if (i === 10) return bd.tail === 'up' ? '..BBBBTTTBBB....' : '..BBBBBBBBBBB...';
+    if (i === 12) return '..BBBBTTBBBBB...';
+    return r.replace(/L/g, 'B');
+  });
+  const top = 32 - FRONT.length - 1;
+  const hopFeet = r => '....LL...LL.....';
+  const blink = r => r.replace(/K/g, 'B');
+  [[FRONT, 0], [BACK, 32]].forEach(([art, y0]) => {
+    put(art, 0, y0 + top); put(art.map((r, i) => i === art.length - 1 ? hopFeet(r) : r), 16, y0 + top - 1); put(art, 32, y0 + top);
+    put(art, 48, y0 + top); put(art.map((r, i) => i === 5 ? blink(r) : r), 64, y0 + top); put(art, 80, y0 + top + 1);
+  });
+  // 옆모습 (오른쪽을 보고 걷기)
+  const sideEar = { up: ['.............D......', '............DPD.....'], semi: ['....................', '............DDD.....'], flop: ['....................', '............DD......'] }[bd.ears];
+  const sideHead = bd.ears === 'flop'
+    ? ['...........BBBBB....', '...........DBKBBB...', '...........DBBBLLN..', '............DBLLL...']
+    : ['...........BBBBB....', '...........BBKBBB...', '...........BBBBLLN..', '............BBLLL...'];
+  const tailUp = bd.tail === 'up';
+  const SIDE = [...sideEar, ...sideHead,
+    (tailUp ? '..TT' : '....') + '.......BBBBL.......',
+    (tailUp ? '.T..' : '....') + 'BBBBBBBBBBBL........',
+    (tailUp ? '....' : 'TT..') + 'BBBBBBBBBBBL........',
+    (tailUp ? '....' : '.T..') + 'BBBLLLLLLLBB........',
+  ].map(r => (r + '....................').slice(0, 20));
+  if (bd.mask) SIDE[3] = SIDE[3].replace('BBK', 'BLK');
+  const legs = [
+    ['....BB.....BB.......', '....BB.....BB.......', '....LL.....LL.......'],
+    ['...BB..B..BB..B.....', '...B...B..B...B.....', '...L...L..L...L.....'],
+    ['.....BB...BB........', '.....BB...BB........', '.....LL...LL........'],
+  ];
+  const st = 32 - (SIDE.length + 3) - 1;
+  legs.forEach((lg, k) => put([...SIDE, ...lg], 6 + k * 32, 64 + st - (k === 1 ? 1 : 0)));
+  outlineSheet(x);
+  return c;
+}
+// 그림 옆의 빈 칸을 어두운 테두리로 (토끼·강아지 공통)
+function outlineSheet(x) {
+  const d = x.getImageData(0, 0, 96, 96), px = d.data, out = new Uint8ClampedArray(px);
+  const op = (i, j) => i >= 0 && j >= 0 && i < 96 && j < 96 && px[(j * 96 + i) * 4 + 3] > 0;
+  for (let j = 0; j < 96; j++) for (let i = 0; i < 96; i++) {
+    if (op(i, j)) continue;
+    if (op(i - 1, j) || op(i + 1, j) || op(i, j - 1) || op(i, j + 1)) { const k = (j * 96 + i) * 4; out[k] = 40; out[k + 1] = 32; out[k + 2] = 44; out[k + 3] = 255; }
+  }
+  x.putImageData(new ImageData(out, 96, 96), 0, 0);
 }
 
 // 토끼는 Pixel Agents에 없어서 같은 규격(96x96: 아래·위 16x32 걷기3+쉬기3, 옆 32x32 걷기3)으로 직접 그린다
@@ -833,7 +909,11 @@ function restartLoop() { loopGen++; schedule(); }
 // ======================================================================
 //  바깥에서 쓰는 함수들
 // ======================================================================
-export const ready = loadAssets().then(() => { IMG.pet_rabbit = makeRabbitSheet(); buildWorld(); });
+export const ready = loadAssets().then(() => {
+  IMG.pet_rabbit = makeRabbitSheet();
+  for (const b of ['collie', 'husky', 'golden']) IMG['pet_' + b] = makeDogSheet(b);
+  buildWorld();
+});
 export function start(canvas, stage, onEvent) {
   cv = canvas; ctx = cv.getContext('2d'); stageEl = stage;
   if (onEvent) emit = onEvent;
@@ -925,6 +1005,8 @@ export function createPetView(canvas, win, getState) {
   win.requestAnimationFrame(tick);
   return { stop() { alive = false; } };
 }
+// 펫 그림 시트 전체 (확인용)
+export function petSheet(kind) { return IMG[PET_IMG[kind]] || null; }
 // 꾸미기 미리보기용 펫 그림 (정면 쉬는 모습)
 export function petPreview(kind) {
   const img = IMG[PET_IMG[kind]]; if (!img) return '';

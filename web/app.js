@@ -27,11 +27,11 @@ function look(m) {
     claudeChar: p.claudeChar ?? base, claudeHue: p.claudeHue ?? office.HUE.main,
     claudeName: (p.claudeName || '').trim() || `${m ? m.name : '?'}의 Claude`,
     // 펫 기본값: 첫째 멤버 강아지, 둘째 토끼, 그다음 고양이
-    pet: p.pet || ['dog', 'rabbit', 'cat'][Math.max(0, MEMBERS.indexOf(m)) % 3],
+    pet: p.pet || ['collie', 'rabbit', 'cat'][Math.max(0, MEMBERS.indexOf(m)) % 3],
     petName: (p.petName || '').trim(),
   };
 }
-const PET_KO = { dog: '강아지', cat: '고양이', rabbit: '토끼' };
+const PET_KO = { collie: '보더콜리', husky: '허스키', golden: '골든 리트리버', dog: '치와와', cat: '고양이', rabbit: '토끼' };
 const petNameOf = (m, l = look(m)) => l.petName || `${m.name}의 ${PET_KO[l.pet] || '펫'}`;
 const avatar = m => { const l = look(m); return office.avatarFor(l.char, l.hue); };
 const claudeAvatar = m => { const l = look(m); return office.avatarFor(l.claudeChar, l.claudeHue); };
@@ -907,7 +907,7 @@ function renderLook() {
     <div class="hues">${HUES.map(h => `<button type="button" class="hu${draft[hueKey] === h ? ' on' : ''}" data-set="${hueKey}" data-v="${h}" aria-label="옷 색 ${h}"><img alt="" src="${office.avatarFor(draft[key], h)}"></button>`).join('')}</div>`;
   $('lookMe').innerHTML = part('char', 'hue');
   $('lookClaude').innerHTML = part('claudeChar', 'claudeHue');
-  $('lookPet').innerHTML = `<div class="looks">${['dog', 'cat', 'rabbit', 'none'].map(k => `<button type="button" class="lk${draft.pet === k ? ' on' : ''}" data-set="pet" data-str="1" data-v="${k}" aria-label="${PET_KO[k] || '펫 없음'}">${k === 'none' ? '<span class="nopet">없음</span>' : `<img alt="" src="${office.petPreview(k)}">`}</button>`).join('')}</div>`;
+  $('lookPet').innerHTML = `<div class="looks">${['collie', 'husky', 'golden', 'dog', 'cat', 'rabbit', 'none'].map(k => `<button type="button" class="lk pet${draft.pet === k ? ' on' : ''}" data-set="pet" data-str="1" data-v="${k}" title="${PET_KO[k] || '펫 없음'}">${k === 'none' ? '<span class="nopet">없음</span>' : `<img alt="" src="${office.petPreview(k)}">`}${k === 'none' ? '' : `<span class="petlbl">${PET_KO[k]}</span>`}</button>`).join('')}</div>`;
   if (document.activeElement !== $('petName')) $('petName').value = draft.petName;
   $('petName').placeholder = `예: ${me.name}의 ${PET_KO[draft.pet] || '펫'}`;
   $('petName').disabled = draft.pet === 'none';

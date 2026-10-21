@@ -119,7 +119,7 @@ service cloud.firestore {
       allow read: if isMember();
       allow write: if isMember() && pid == myId()
         && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName', 'pet', 'petName'])
-        && (!('pet' in request.resource.data) || request.resource.data.pet in ['dog', 'cat', 'rabbit', 'none'])
+        && (!('pet' in request.resource.data) || request.resource.data.pet in ['collie', 'husky', 'golden', 'dog', 'cat', 'rabbit', 'none'])
         && (!('petName' in request.resource.data) || (request.resource.data.petName is string && request.resource.data.petName.size() <= 12))
         && okLook(request.resource.data.char, request.resource.data.hue)
         && okLook(request.resource.data.claudeChar, request.resource.data.claudeHue)
