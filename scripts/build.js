@@ -118,18 +118,32 @@ service cloud.firestore {
       function okLook(c, h) { return c is int && c >= 0 && c <= 5 && h is int && h >= 0 && h < 360; }
       allow read: if isMember();
       allow write: if isMember() && pid == myId()
-        && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName'])
+        && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName', 'pet', 'petName'])
+        && (!('pet' in request.resource.data) || request.resource.data.pet in ['dog', 'cat', 'rabbit', 'none'])
+        && (!('petName' in request.resource.data) || (request.resource.data.petName is string && request.resource.data.petName.size() <= 12))
         && okLook(request.resource.data.char, request.resource.data.hue)
         && okLook(request.resource.data.claudeChar, request.resource.data.claudeHue)
         && request.resource.data.claudeName is string && request.resource.data.claudeName.size() <= 16;
+    }
+
+    // 📝 회의 메모 (날짜마다 한 문서, 멤버 누구나 고침)
+    match /notes/{day} {
+      allow read: if isMember();
+      allow write: if isMember()
+        && request.resource.data.keys().hasOnly(['text', 'by', 'at'])
+        && request.resource.data.by == myId()
+        && request.resource.data.text is string && request.resource.data.text.size() <= 5000
+        && request.resource.data.at == request.time;
     }
 
     // 접속 표시 (페이지를 열어둔 동안 1분마다 갱신)
     match /presence/{pid} {
       allow read: if isMember();
       allow write: if isMember() && pid == myId()
-        && request.resource.data.keys().hasOnly(['at', 'status'])
-        && (!('status' in request.resource.data) || request.resource.data.status in ['work', 'meeting', 'out', 'focus', 'off']);
+        && request.resource.data.keys().hasOnly(['at', 'status', 'pos'])
+        && (!('status' in request.resource.data) || request.resource.data.status in ['work', 'meeting', 'focus', 'break', 'out', 'off'])
+        && (!('pos' in request.resource.data) || request.resource.data.pos == null
+            || (request.resource.data.pos.keys().hasOnly(['c', 'r']) && request.resource.data.pos.c is int && request.resource.data.pos.r is int));
     }
   }
 }

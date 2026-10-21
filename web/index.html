@@ -211,6 +211,12 @@
   .lk:focus-visible, .hu:focus-visible { outline: 2px solid var(--accent); }
   dialog h4 { margin: 14px 0 2px; font-size: 13px; }
 
+  .nopet { display: inline-grid; place-items: center; width: 32px; height: 64px; font-size: 11px; color: var(--muted); line-height: 1.2; }
+  .memo { width: 100%; min-height: 110px; resize: vertical; background: #1b1724; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; font-size: 13px; }
+  .memo:focus { outline: none; border-color: var(--accent); }
+  #memoMeta { font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .stage.pipped { min-height: 80px; align-items: center; color: var(--muted); font-size: 13px; }
+  .stage.pipped::after { content: '📺 사무실이 작은 창에 떠 있어요'; }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #2f2742; border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 13px; z-index: 60; max-width: calc(100vw - 32px); }
   .toast[hidden] { display: none; }
 </style>
@@ -233,11 +239,12 @@
   <span class="tools">
     <span class="me" id="me"></span>
     <select class="btn" id="status" aria-label="내 상태">
-      <option value="work">💼 근무 중</option><option value="meeting">📅 회의 중</option><option value="focus">🎧 집중</option>
+      <option value="work">💼 근무 중</option><option value="meeting">📅 회의 중</option><option value="focus">🎧 집중</option><option value="break">☕ 휴식</option>
       <option value="out">🚶 외근</option><option value="off">🌙 퇴근</option>
     </select>
     <button class="btn" id="installBtn" hidden>📲 앱 설치</button>
     <button class="btn" id="lookBtn">🎨 꾸미기</button>
+    <button class="btn" id="pipBtn" title="사무실을 항상 위에 떠 있는 작은 창으로">📺 작은 창</button>
     <button class="btn" id="notify" aria-pressed="false">🔕 알림 꺼짐</button>
     <button class="btn" id="journalBtn">📓 업무일지</button>
     <button class="btn" id="connectBtn">🔌 내 PC 연결</button>
@@ -248,6 +255,10 @@
 <main>
   <div class="left">
     <div class="stage" id="stage"><canvas id="c"></canvas></div>
+    <section class="card" id="memoCard" hidden>
+      <h2>📝 회의 메모 <span class="right" id="memoMeta"></span></h2>
+      <textarea id="memo" class="memo" maxlength="5000" placeholder="회의하면서 같이 적어요. 자동 저장되고 오늘 업무일지에 들어가요."></textarea>
+    </section>
     <div class="duo">
       <section class="card" id="boardCard">
         <h2>📋 화이트보드 <span id="boardCount"></span>
@@ -349,6 +360,10 @@
     <label class="f" for="lookName">이름 (사무실 이름표에 "🤖 이름"으로 보여요)</label>
     <input type="text" id="lookName" maxlength="16" placeholder="예: 재우의 Claude, 코코">
     <div id="lookClaude"></div>
+    <h4>내 펫</h4>
+    <div id="lookPet"></div>
+    <label class="f" for="petName">펫 이름</label>
+    <input type="text" id="petName" maxlength="12">
     <div class="row">
       <button class="btn" type="button" id="lookCancel">취소</button>
       <button class="btn primary" type="submit">저장</button>

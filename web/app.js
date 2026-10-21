@@ -26,13 +26,19 @@ function look(m) {
     char: p.char ?? base, hue: p.hue ?? 0,
     claudeChar: p.claudeChar ?? base, claudeHue: p.claudeHue ?? office.HUE.main,
     claudeName: (p.claudeName || '').trim() || `${m ? m.name : '?'}의 Claude`,
+    // 펫 기본값: 첫째 멤버 강아지, 둘째 토끼, 그다음 고양이
+    pet: p.pet || ['dog', 'rabbit', 'cat'][Math.max(0, MEMBERS.indexOf(m)) % 3],
+    petName: (p.petName || '').trim(),
   };
 }
+const PET_KO = { dog: '강아지', cat: '고양이', rabbit: '토끼' };
+const petNameOf = (m, l = look(m)) => l.petName || `${m.name}의 ${PET_KO[l.pet] || '펫'}`;
 const avatar = m => { const l = look(m); return office.avatarFor(l.char, l.hue); };
 const claudeAvatar = m => { const l = look(m); return office.avatarFor(l.claudeChar, l.claudeHue); };
 const claudeName = id => look(byId[id] || { name: nameOf(id) }).claudeName;
 // 사람 상태
-const STATUS = { work: '💼 근무 중', meeting: '📅 회의 중', focus: '🎧 집중', out: '🚶 외근', off: '🌙 퇴근' };
+const STATUS = { work: '💼 근무 중', meeting: '📅 회의 중', focus: '🎧 집중', break: '☕ 휴식', out: '🚶 외근', off: '🌙 퇴근' };
+let myPos = null;   // 사무실에서 직접 클릭해 옮긴 내 위치 {c, r} (상태를 바꾸면 초기화)
 let myStatus = 'work';
 try { myStatus = localStorage.getItem('office-status') || 'work'; } catch {}
 const quiet = () => myStatus === 'focus';   // 집중 모드: 메시지·요청 알림 끔 (내 Claude 알림은 유지)
@@ -69,8 +75,12 @@ async function firebaseStore() {
     send: (chatId, text) => F.addDoc(F.collection(db, 'chats', chatId, 'messages'), { from: me.id, text, at: F.serverTimestamp() }),
     onProfiles: cb => F.onSnapshot(F.collection(db, 'profiles'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()])))),
     saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p),
-    heartbeat: status => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status }),
-    onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work' }])))),
+    heartbeat: (status, pos) => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status, pos: pos || null }),
+    onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work', pos: d.data().pos || null }])))),
+    // 📝 회의 메모 (날짜마다 한 장)
+    onNote: (day, cb) => F.onSnapshot(F.doc(db, 'notes', day), d => cb(d.exists() ? d.data({ serverTimestamps: 'estimate' }) : null)),
+    saveNote: (day, text) => F.setDoc(F.doc(db, 'notes', day), { text, by: me.id, at: F.serverTimestamp() }),
+    getNote: async day => { const d = await F.getDoc(F.doc(db, 'notes', day)); return d.exists() ? d.data() : null; },
     // ✨ AI 요약 (Netlify Function이 멤버인지 확인한 뒤 Claude API 호출)
     summarize: async text => {
       const res = await fetch('/.netlify/functions/summarize', {
@@ -119,7 +129,7 @@ function b64url(s) { return btoa(String.fromCharCode(...new TextEncoder().encode
 // ======================================================================
 function demoStore() {
   const sessions = new Map(), chats = {}, subs = { sessions: [], msgs: {}, board: [], reqs: [], presence: [] };
-  const profilesDemo = {};
+  const profilesDemo = {}, notesDemo = {};
   const presenceDemo = Object.fromEntries(MEMBERS.map((m, i) => [m.id, { at: Date.now(), status: i ? 'focus' : 'work' }]));
   const journals = {}, board = [], reqs = [];
   const uid = () => Math.random().toString(36).slice(2);
@@ -205,7 +215,16 @@ function demoStore() {
     },
     onProfiles: cb => { subs.profiles = cb; cb({}); },
     saveProfile: async p => { profilesDemo[me.id] = p; subs.profiles && subs.profiles({ ...profilesDemo }); },
-    heartbeat: async status => { presenceDemo[me.id] = { at: Date.now(), status }; subs.presence.forEach(cb => cb({ ...presenceDemo })); },
+    heartbeat: async (status, pos) => {
+      presenceDemo[me.id] = { at: Date.now(), status, pos: pos || null };
+      subs.presence.forEach(cb => cb({ ...presenceDemo }));
+      // 데모: 내가 회의 중이 되면 상대도 잠시 뒤 회의실로 온다
+      if (status === 'meeting' && other !== MEMBERS[0] && presenceDemo[other.id].status !== 'meeting')
+        setTimeout(() => { presenceDemo[other.id] = { at: Date.now(), status: 'meeting', pos: null }; subs.presence.forEach(cb => cb({ ...presenceDemo })); }, 2500);
+    },
+    onNote: (day, cb) => { subs.note = cb; cb(notesDemo[day] || null); },
+    saveNote: async (day, text) => { notesDemo[day] = { text, by: me.id, at: Date.now() }; },
+    getNote: async day => notesDemo[day] || null,
     onPresence: cb => { subs.presence.push(cb); cb({ ...presenceDemo }); },
     summarize: async text => {
       await new Promise(r => setTimeout(r, 1200));
@@ -279,6 +298,8 @@ function loginError(e) {
 let sessions = [];
 function applyProfiles() {
   office.setProfiles(Object.fromEntries(MEMBERS.map(m => [m.name, look(m)])));
+  office.setPets(MEMBERS.map(m => ({ m, l: look(m) })).filter(x => PET_KO[x.l.pet]).map(({ m, l }) => ({ id: m.id, owner: m.id, kind: l.pet, name: petNameOf(m, l) })));
+  if (me) office.setMe(me.name);
   if (me) $('me').innerHTML = `<img alt="" src="${avatar(me)}"><span>${esc(me.name)} <small>${esc(me.title || '')}</small></span>`;
 }
 function startOffice() {
@@ -302,28 +323,38 @@ function startOffice() {
   startChat();
   startBoard();
   startRequests();
-  const beat = () => store.heartbeat(myStatus).catch(() => {});
+  beat = () => store.heartbeat(myStatus, myPos).catch(() => {});
   beat();
   setInterval(() => { if (!document.hidden) beat(); }, 60_000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { beat(); markRead(); } });
   $('status').value = myStatus;
   $('status').onchange = () => {
-    myStatus = $('status').value;
-    try { localStorage.setItem('office-status', myStatus); } catch {}
-    beat();
+    setStatus($('status').value, true);
     toast(`내 상태: ${STATUS[myStatus]}${myStatus === 'focus' ? ' · 메시지 알림을 잠시 꺼요 (내 Claude 알림은 계속)' : ''}`);
   };
   setInterval(checkLongWaits, 30_000);
+}
+
+let beat = () => {};
+// 상태 바꾸기. clearPos=true면 직접 옮긴 위치를 버리고 상태대로 자리 잡기
+function setStatus(st, clearPos) {
+  myStatus = st; $('status').value = st;
+  if (clearPos) myPos = null;
+  try { localStorage.setItem('office-status', myStatus); } catch {}
+  beat(); pushOffice();
 }
 
 // 사무실 화면 갱신: Claude 세션 + 출근한 사람
 let lastLog = [];
 const isOnline = id => presence[id] && Date.now() - presence[id].at < 150_000;
 function pushOffice() {
-  const humans = MEMBERS.map((m, i) => ({ id: m.id, user: m.name, owner: m.id, status: (presence[m.id] || {}).status || 'work', desk: i }))
-    .filter(h => isOnline(h.id) && h.status !== 'off' && h.status !== 'out');
+  const humans = MEMBERS.map((m, i) => {
+    const p = presence[m.id] || {}, mine = me && m.id === me.id;
+    return { id: m.id, user: m.name, owner: m.id, status: mine ? myStatus : p.status || 'work', pos: mine ? myPos : p.pos || null, desk: i };
+  }).filter(h => (h.id === (me && me.id) || isOnline(h.id)) && h.status !== 'off' && h.status !== 'out');
   office.applySnapshot({ sessions, humans, log: lastLog, now: Date.now() });
   renderPeople(lastLog);
+  renderMemo(humans);
 }
 
 // ⏰ 승인 대기가 길어지면 다시 알림 (5분, 15분)
@@ -344,8 +375,45 @@ function checkLongWaits() {
   }
 }
 
+// 🚶 바닥을 클릭하면 그 자리로 걸어가고, 도착한 방에 따라 기능이 실행된다
+const ROOM_STATUS = { D: 'work', C: 'meeting', O: 'break' };
+function onFloor(t) {
+  myPos = { c: t.col, r: t.row };
+  const st = ROOM_STATUS[t.room];
+  if (st && !(st === 'work' && myStatus === 'focus')) myStatus = st, $('status').value = st;
+  try { localStorage.setItem('office-status', myStatus); } catch {}
+  beat(); pushOffice();
+}
+const inviteSent = {};
+function invite(kind, text) {
+  const peers = MEMBERS.filter(m => m.id !== me.id);
+  if (!peers.length) return;
+  const go = () => {
+    for (const m of peers) store.send(chatIdWith(m.id), text).catch(() => {});
+    inviteSent[kind] = Date.now(); toast('초대를 보냈어요.');
+  };
+  if (Date.now() - (inviteSent[kind] || 0) < 10 * 60_000) return;   // 10분 안에 같은 초대는 다시 묻지 않음
+  toastAction(text, '보내기', go);
+}
+function onArrive(t) {
+  // 다른 사람 옆 → 똑똑 (채팅창 열고 인사말 준비)
+  const other = (t.near || []).find(d => d.owner !== me.id);
+  if (other && chats[chatIdWith(other.owner)]) {
+    active = chatIdWith(other.owner); renderChat();
+    if (!$('input').value) $('input').value = '👋 똑똑! 잠깐 얘기 가능해요?';
+    $('input').focus(); autosize();
+    toast(`👋 ${other.user}님 옆이에요. Enter를 누르면 똑똑을 보내요.`);
+    return;
+  }
+  if (t.room === 'D' && t.row <= 3 && t.col >= 18 && t.col <= 21) { focusBoard(); return; }   // 화이트보드 앞
+  if (t.room === 'L') { $('journalBtn').click(); return; }                                    // 자료실 → 업무일지
+  if (t.room === 'C') { invite('meeting', '📅 통신실에서 잠깐 회의할까요?'); return; }
+  if (t.room === 'O') { invite('coffee', '☕ 라운지에서 커피 한잔 어때요?'); return; }
+}
 function onOfficeEvent(kind, s) {
   if (kind === 'board') { focusBoard(); return; }
+  if (kind === 'floor') { onFloor(s); return; }
+  if (kind === 'arrive') { onArrive(s); return; }
   if (kind === 'human') {
     // 내 캐릭터 → 상태 바꾸기, 다른 사람 → 채팅
     if (s.owner === me.id) openLook();
@@ -726,7 +794,7 @@ const CAT = { read: ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead'], edit: ['Edit
 const sumTools = (tools, names) => names.reduce((a, n) => a + (tools[n] || 0), 0);
 const listMore = (arr, n) => arr.slice(0, n).join(', ') + (arr.length > n ? ` 외 ${arr.length - n}개` : '');
 
-function buildJournal(day, journals, boardDone, reqs) {
+function buildJournal(day, journals, boardDone, reqs, memo) {
   const lines = [], html = [];
   const d = new Date(day + 'T00:00:00');
   const title = `📓 업무일지 · ${d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}`;
@@ -765,6 +833,7 @@ function buildJournal(day, journals, boardDone, reqs) {
   if (boardDone.length) team.push([`📋 화이트보드 완료 ${boardDone.length}건`, boardDone.map(x => `${x.text} (${nameOf(x.doneBy)})`)]);
   if (day === today()) { const left = boardItems.filter(x => !x.done); if (left.length) team.push([`📌 남은 할 일 ${left.length}건`, left.map(x => x.text)]); }
   const dayReqs = reqs.filter(r => r.day === day && r.status !== 'canceled');
+  if (memo && memo.text && memo.text.trim()) team.push(['📝 회의 메모', memo.text.trim().split('\n').filter(Boolean)]);
   if (dayReqs.length) team.push([`🙋 확인 요청 ${dayReqs.length}건`, dayReqs.map(r => `${nameOf(r.from)}→${nameOf(r.to)}${r.project ? ' [' + r.project + ']' : ''} ${r.text} → ${REQ_STATUS[r.status]}${r.reply ? ' “' + r.reply + '”' : ''}`)]);
   if (team.length) {
     lines.push('', '👥 팀');
@@ -779,8 +848,8 @@ async function loadJournal() {
   const day = $('jDate').value || today();
   $('jBody').innerHTML = '<p class="empty">불러오는 중…</p>';
   try {
-    const [journals, boardDone] = await Promise.all([store.getJournal(day), store.getBoardDone(day)]);
-    const out = buildJournal(day, journals, boardDone, requests);
+    const [journals, boardDone, memo] = await Promise.all([store.getJournal(day), store.getBoardDone(day), store.getNote(day).catch(() => null)]);
+    const out = buildJournal(day, journals, boardDone, requests, memo);
     journalText = out.text;
     $('jBody').innerHTML = out.html;
     $('jSummary').hidden = true; summaryText = '';
@@ -838,6 +907,10 @@ function renderLook() {
     <div class="hues">${HUES.map(h => `<button type="button" class="hu${draft[hueKey] === h ? ' on' : ''}" data-set="${hueKey}" data-v="${h}" aria-label="옷 색 ${h}"><img alt="" src="${office.avatarFor(draft[key], h)}"></button>`).join('')}</div>`;
   $('lookMe').innerHTML = part('char', 'hue');
   $('lookClaude').innerHTML = part('claudeChar', 'claudeHue');
+  $('lookPet').innerHTML = `<div class="looks">${['dog', 'cat', 'rabbit', 'none'].map(k => `<button type="button" class="lk${draft.pet === k ? ' on' : ''}" data-set="pet" data-str="1" data-v="${k}" aria-label="${PET_KO[k] || '펫 없음'}">${k === 'none' ? '<span class="nopet">없음</span>' : `<img alt="" src="${office.petPreview(k)}">`}</button>`).join('')}</div>`;
+  if (document.activeElement !== $('petName')) $('petName').value = draft.petName;
+  $('petName').placeholder = `예: ${me.name}의 ${PET_KO[draft.pet] || '펫'}`;
+  $('petName').disabled = draft.pet === 'none';
   $('lookPrev').innerHTML = `
     <figure><img alt="" src="${office.previewFor(draft.char, draft.hue)}"><figcaption>${esc(me.name)}</figcaption></figure>
     <figure><img alt="" src="${office.previewFor(draft.claudeChar, draft.claudeHue)}"><figcaption>🤖 ${esc(draft.claudeName || me.name + '의 Claude')}</figcaption></figure>`;
@@ -845,19 +918,98 @@ function renderLook() {
 }
 $('lookDlg').addEventListener('click', e => {
   const b = e.target.closest('[data-set]'); if (!b) return;
-  draft[b.dataset.set] = +b.dataset.v; renderLook();
+  draft[b.dataset.set] = b.dataset.str ? b.dataset.v : +b.dataset.v; renderLook();
 });
 $('lookName').addEventListener('input', () => { draft.claudeName = $('lookName').value; renderLook(); });
+$('petName').addEventListener('input', () => { draft.petName = $('petName').value; });
 $('lookBtn').onclick = openLook;
 $('lookCancel').onclick = () => $('lookDlg').close();
 $('lookForm').addEventListener('submit', e => {
   e.preventDefault();
   const name = $('lookName').value.trim().slice(0, 16);
-  const p = { char: draft.char, hue: draft.hue, claudeChar: draft.claudeChar, claudeHue: draft.claudeHue, claudeName: name || `${me.name}의 Claude` };
+  const p = { char: draft.char, hue: draft.hue, claudeChar: draft.claudeChar, claudeHue: draft.claudeHue, claudeName: name || `${me.name}의 Claude`,
+    pet: draft.pet, petName: $('petName').value.trim().slice(0, 12) };
   $('lookDlg').close();
   store.saveProfile(p).then(() => toast('🎨 저장했어요. 상대 화면에도 바로 바뀌어요.'))
     .catch(err => toast('저장하지 못했어요 (' + (err.code || err.message) + ')'));
 });
+
+// ======================================================================
+//  📝 회의 메모 (두 사람 이상이 회의 중일 때 나타남)
+// ======================================================================
+let memoDay = null, memoTimer = null, memoUnsub = null;
+function renderMemo(humans) {
+  const meeting = humans.filter(h => h.status === 'meeting');
+  const show = meeting.length >= 2 && meeting.some(h => h.id === me.id);
+  $('memoCard').hidden = !show;
+  if (!show || memoDay === today()) return;
+  memoDay = today();
+  if (memoUnsub) try { memoUnsub(); } catch {}
+  memoUnsub = store.onNote(memoDay, n => {
+    if (document.activeElement === $('memo')) return;   // 내가 쓰는 중이면 덮어쓰지 않음
+    $('memo').value = (n && n.text) || '';
+    $('memoMeta').textContent = n && n.by ? `${nameOf(n.by)}님이 마지막으로 고침` : '';
+  });
+}
+$('memo').addEventListener('input', () => {
+  clearTimeout(memoTimer);
+  $('memoMeta').textContent = '저장 중…';
+  memoTimer = setTimeout(() => store.saveNote(today(), $('memo').value.slice(0, 5000))
+    .then(() => { $('memoMeta').textContent = '저장됨 · 업무일지에도 들어가요'; })
+    .catch(err => { $('memoMeta').textContent = '저장하지 못했어요 (' + (err.code || err.message) + ')'; }), 800);
+});
+
+// ======================================================================
+//  📺 작은 창 (PIP): 사무실을 항상 위에 떠 있는 작은 창으로
+// ======================================================================
+let pipWin = null, pipVideo = null;
+async function openPip() {
+  const cv = $('c');
+  if ('documentPictureInPicture' in window) {
+    if (pipWin) { pipWin.close(); return; }
+    try { pipWin = await documentPictureInPicture.requestWindow({ width: 480, height: 312 }); }
+    catch { pipWin = null; toast('이 창에서는 작은 창을 열 수 없어요. Chrome이나 Edge에서 사이트를 직접 열어 주세요.'); return; }
+    const d = pipWin.document;
+    d.title = 'Claude Office';
+    const st = d.createElement('style');
+    st.textContent = 'html,body{margin:0;height:100%;background:#0f0d14;overflow:hidden}body{display:flex;align-items:center;justify-content:center}canvas{display:block;max-width:100%;max-height:100%;image-rendering:pixelated}';
+    d.head.appendChild(st);
+    d.body.dataset.pad = '0';
+    d.body.appendChild(cv);
+    office.setCompact(true);
+    office.rehost(d.body, pipWin);
+    $('stage').classList.add('pipped');
+    $('pipBtn').textContent = '📺 작은 창 닫기';
+    pipWin.addEventListener('pagehide', () => {
+      $('stage').appendChild(cv);
+      office.setCompact(false);
+      office.rehost($('stage'), window);
+      $('stage').classList.remove('pipped');
+      $('pipBtn').textContent = '📺 작은 창';
+      pipWin = null;
+    });
+    return;
+  }
+  return openVideoPip();
+}
+// 문서 PIP가 없는 브라우저(Safari 등): 사무실 화면을 영상으로 띄움 (보기 전용)
+// 클릭 직후에 바로 띄워야 해서, 버튼에 마우스를 올릴 때 영상을 미리 준비해 둔다
+function prepareVideo() {
+  const cv = $('c');
+  if (pipVideo || !cv.captureStream || !document.pictureInPictureEnabled) return;
+  pipVideo = Object.assign(document.createElement('video'), { muted: true, playsInline: true, srcObject: cv.captureStream(15) });
+  pipVideo.play().catch(() => {});
+  pipVideo.addEventListener('leavepictureinpicture', () => office.setBackgroundTick(false));
+}
+function openVideoPip() {
+  if (!document.pictureInPictureEnabled || !$('c').captureStream) { toast('이 브라우저는 작은 창을 지원하지 않아요. Chrome이나 Edge를 써주세요.'); return; }
+  if (document.pictureInPictureElement) return document.exitPictureInPicture();
+  prepareVideo();
+  office.setBackgroundTick(true);
+  return pipVideo.requestPictureInPicture();
+}
+$('pipBtn').addEventListener('pointerenter', () => { if (!('documentPictureInPicture' in window)) prepareVideo(); });
+$('pipBtn').onclick = () => openPip().catch(err => toast('작은 창을 열지 못했어요: ' + err.message));
 
 let toastTimer;
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 6000); }

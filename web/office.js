@@ -416,18 +416,33 @@ function applySnapshot(s) {
   assignSpots(mains);
 }
 
+// 자리 키("col,row")가 어느 방인지 (정해진 자리가 아니면 바닥 글자로)
+function roomOfKey(key) {
+  if (!key) return null;
+  const sp = SPOT_BY_KEY[key];
+  if (sp) return sp.room === 'X' ? 'D' : sp.room;
+  const [c, r] = key.split(',').map(Number);
+  return MAP[r] && MAP[r][c];
+}
 function assignSpots(mains) {
   const live = [...actors.values()].filter(a => !a.leaving);
   const own = a => DESK_SPOTS[a.deskIdx] && DESK_SPOTS[a.deskIdx].key;
   const ownedDesks = new Set(mains.map(own));
-  const roomOf = key => key && (SPOT_BY_KEY[key].room === 'X' ? 'D' : SPOT_BY_KEY[key].room);
+  const roomOf = roomOfKey;
   const want = new Map();
   for (const a of live) {
     if (a.kind === 'human') {
-      // 사람: 근무/집중 → 자기 책상, 회의 → 통신실(회의 테이블)
-      const meeting = a.data.status === 'meeting';
-      const keep = meeting ? roomOf(a.spot) === 'C' : a.spot === own(a);
-      want.set(a, keep ? null : meeting ? 'C' : 'D');
+      // 사람: 직접 클릭한 자리가 있으면 그곳으로. 아니면 상태대로 (근무/집중 → 자기 책상, 회의 → 통신실, 휴식 → 라운지)
+      const pos = a.data.pos;
+      if (pos && isFloor(pos.c, pos.r)) {
+        const key = `${pos.c},${pos.r}`;
+        if (a.spot !== key) { a.spot = key; const sp = SPOT_BY_KEY[key]; goTo(a, pos.c, pos.r, sp ? sp.dir : 'down'); a.walking = true; }
+        want.set(a, null);
+        continue;
+      }
+      const st = a.data.status, target = st === 'meeting' ? 'C' : st === 'break' ? 'O' : 'D';
+      const keep = target === 'D' ? a.spot === own(a) : roomOf(a.spot) === target && !!SPOT_BY_KEY[a.spot];
+      want.set(a, keep ? null : target);
       continue;
     }
     let room = ROOM_OF_STATE[a.data.state];
@@ -467,7 +482,17 @@ function stepActor(a, dt) {
     if (Math.abs(dx) > Math.abs(dy)) a.dir = dx > 0 ? 'right' : 'left'; else if (dist > 0.1) a.dir = dy > 0 ? 'down' : 'up';
     if (dist <= step) { a.x = tx; a.y = ty; a.path.shift(); }
     else { a.x += dx / dist * step; a.y += dy / dist * step; }
-    if (!a.path.length) { a.arrived = !a.leaving; if (a.finalDir) a.dir = a.finalDir; if (a.leaving) { elevatorOpenUntil = now + 1200; a.fading = true; } }
+    if (!a.path.length) {
+      a.arrived = !a.leaving; if (a.finalDir) a.dir = a.finalDir;
+      if (a.leaving) { elevatorOpenUntil = now + 1200; a.fading = true; }
+      if (a.kind === 'human' && a.walking && a.data.user === meUser && !a.leaving) {
+        // 내가 클릭해서 걸어간 곳에 도착 → 앱이 방별 기능을 실행
+        a.walking = false;
+        const [c, r] = tileAt(a);
+        const near = [...actors.values()].filter(o => o !== a && o.kind === 'human' && !o.leaving && Math.hypot(o.x - a.x, o.y - a.y) <= 26).map(o => o.data);
+        emit('arrive', { col: c, row: r, room: MAP[r][c], near });
+      }
+    }
   }
   if (a.fading || (a.leaving && !a.path.length)) {
     a.alpha -= dt * 1.6;
@@ -525,28 +550,70 @@ function bubbleOf(a) {
 // ======================================================================
 //  반려동물 (라운지를 돌아다님, 클릭하면 하트)
 // ======================================================================
-const pets = [
-  { key: 'pet_claudio', x: 9 * T + 8, y: 23 * T + 8, path: [], dir: 'down', until: 0, heartUntil: 0 },
-  { key: 'pet_gitcat', x: 12 * T + 8, y: 21 * T + 8, path: [], dir: 'down', until: 0, heartUntil: 0 },
-];
+let pets = [];
+const PET_IMG = { dog: 'pet_claudio', cat: 'pet_gitcat', rabbit: 'pet_rabbit' };
+const LOUNGE = () => { const t = []; for (let r = 17; r < ROWS; r++) for (let c = 1; c <= 16; c++) if (walkable(c, r) && MAP[r][c] === 'O') t.push([c, r]); return t; };
+const tileAt = o => [Math.round((o.x - 8) / T), Math.round((o.y - 8) / T)];
 function stepPet(p, dt) {
+  // 주인이 출근해 있으면 주인 옆으로 따라가고, 없으면 라운지를 돌아다닌다
+  const owner = actors.get('human:' + p.owner);
+  const follow = owner && !owner.leaving && owner.alpha > .5;
+  if (follow) {
+    const [oc, or] = tileAt(owner);
+    const far = Math.hypot(owner.x - p.x, owner.y - p.y) > 26;
+    const moved = !p.goal || Math.abs(p.goal[0] - oc) + Math.abs(p.goal[1] - or) > 2;
+    if (far && (moved || !p.path.length)) {
+      const near = [[1, 0], [-1, 0], [0, 1], [1, 1], [-1, 1], [0, -1]].map(([dc, dr]) => [oc + dc, or + dr]).find(([c, r]) => walkable(c, r));
+      if (near) { p.path = findPath(...tileAt(p), near[0], near[1]) || []; p.goal = [oc, or]; }
+    }
+  }
   if (p.path.length) {
     const [c, r] = p.path[0], tx = c * T + 8, ty = r * T + 8;
-    const dx = tx - p.x, dy = ty - p.y, dist = Math.hypot(dx, dy), step = 32 * dt;
+    const dx = tx - p.x, dy = ty - p.y, dist = Math.hypot(dx, dy), step = (follow ? 60 : 32) * dt;
     if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left'; else if (dist > .1) p.dir = dy > 0 ? 'down' : 'up';
     if (dist <= step) { p.x = tx; p.y = ty; p.path.shift(); if (!p.path.length) p.until = now + 3000 + Math.random() * 9000; }
     else { p.x += dx / dist * step; p.y += dy / dist * step; }
-  } else if (now > p.until) {
-    const tiles = [];
-    for (let r = 17; r < ROWS; r++) for (let c = 1; c <= 16; c++) if (walkable(c, r) && MAP[r][c] === 'O') tiles.push([c, r]);
+  } else if (!follow && now > p.until) {
+    const tiles = LOUNGE();
     const [gc, gr] = tiles[Math.floor(Math.random() * tiles.length)];
-    const [sc, sr] = [Math.round((p.x - 8) / T), Math.round((p.y - 8) / T)];
-    p.path = findPath(sc, sr, gc, gr) || [];
+    p.path = findPath(...tileAt(p), gc, gr) || []; p.goal = null;
     if (!p.path.length) p.until = now + 2000;
   }
 }
+
+// 토끼는 Pixel Agents에 없어서 같은 규격(96x96: 아래·위 16x32 걷기3+쉬기3, 옆 32x32 걷기3)으로 직접 그린다
+function makeRabbitSheet() {
+  const c = document.createElement('canvas'); c.width = 96; c.height = 96;
+  const x = c.getContext('2d');
+  const COL = { W: '#efe7dc', S: '#d9cfc2', P: '#f2a7b8', K: '#2b2230', N: '#e07a8c', F: '#d1c6b8', T: '#ffffff' };
+  const put = (rows, ox, oy, edit) => rows.forEach((row, r) => [...(edit ? edit(row, r) : row)].forEach((ch, i) => { if (COL[ch]) { x.fillStyle = COL[ch]; x.fillRect(ox + i, oy + r, 1, 1); } }));
+  const FRONT = ['.....W...W......', '....WPW.WPW.....', '....WPW.WPW.....', '....WPW.WPW.....', '....WWWWWWW.....', '...WWWWWWWWW....',
+    '...WWKWWWKWW....', '...WWWWNWWWW....', '....WWWWWWW.....', '...WWWWWWWWW....', '..WWWWWWWWWWW...', '..WWSWWWWWSWW...', '...WWWWWWWWW....', '...FF.....FF....'];
+  const BACK = FRONT.map((r, i) => i === 6 || i === 7 ? '...WWWWWWWWW....' : i === 11 ? '..WWSWTTTWSWW...' : r);
+  const feetB = r => '....FF...FF.....';
+  const blink = (row, r) => r === 6 ? '...WWWWWWWWW....' : row;
+  const twitch = (row, r) => r === 0 ? '.........W......' : r === 1 ? '....W.W.WPW.....' : row;
+  const top = 32 - FRONT.length - 1;
+  [[FRONT, 0], [BACK, 32]].forEach(([art, y0]) => {
+    put(art, 0, y0 + top); put(art.map((r, i) => i === art.length - 1 ? feetB(r) : r), 16, y0 + top - 2); put(art, 32, y0 + top);
+    put(art, 48, y0 + top); put(art, 64, y0 + top, art === FRONT ? blink : null); put(art, 80, y0 + top, twitch);
+  });
+  const SIDE = ['......WW............', '.....WPPW...........', '......WPPW..........', '.......WPPW.........', '........WWWWW.......', '.......WWWWWKW......',
+    '.......WWWWWWWN.....', '..WWWWWWWWWWWW......', '.TWWWWWWWWWWWW......', '.TWWWWWWWWWWW.......', '..WWWSWWWWSWW.......', '..FF.......FF.......'];
+  const st = 32 - SIDE.length - 1;
+  put(SIDE, 6, 64 + st); put(SIDE.map((r, i) => i === SIDE.length - 1 ? '.FF.........FF......' : r), 38, 64 + st - 3); put(SIDE.map((r, i) => i === SIDE.length - 1 ? '...FF.....FF........' : r), 70, 64 + st);
+  // 테두리: 그림 옆의 빈 칸을 어두운 색으로
+  const d = x.getImageData(0, 0, 96, 96), px = d.data, out = new Uint8ClampedArray(px);
+  const op = (i, j) => i >= 0 && j >= 0 && i < 96 && j < 96 && px[(j * 96 + i) * 4 + 3] > 0;
+  for (let j = 0; j < 96; j++) for (let i = 0; i < 96; i++) {
+    if (op(i, j)) continue;
+    if (op(i - 1, j) || op(i + 1, j) || op(i, j - 1) || op(i, j + 1)) { const k = (j * 96 + i) * 4; out[k] = 94; out[k + 1] = 79; out[k + 2] = 88; out[k + 3] = 255; }
+  }
+  x.putImageData(new ImageData(out, 96, 96), 0, 0);
+  return c;
+}
 function drawPet(p) {
-  const img = IMG[p.key]; if (!img) return;
+  const img = IMG[PET_IMG[p.kind]]; if (!img) return;
   const walking = p.path.length > 0, f = Math.floor(now / (walking ? 150 : 300)) % 3;
   const bottom = Math.round(p.y + 6);
   if (walking && (p.dir === 'left' || p.dir === 'right')) {
@@ -564,10 +631,11 @@ function drawPet(p) {
 //  렌더링
 // ======================================================================
 let cv, ctx, stageEl, emit = () => {};
+let compact = false, meUser = null;
 let zoom = 2, dpr = 1;
 function resize() {
   dpr = window.devicePixelRatio || 1;
-  const avail = stageEl.clientWidth - 18;
+  const avail = stageEl.clientWidth - (stageEl.dataset.pad ? +stageEl.dataset.pad : 18);
   zoom = Math.max(1, Math.floor(avail * dpr / WW));
   cv.width = WW * zoom; cv.height = WH * zoom;
   cv.style.width = Math.min(avail, WW * zoom / dpr) + 'px';
@@ -587,15 +655,28 @@ function hitTest(wx, wy) {
   if (hits.length) { const a = hits.sort((x, y) => y.y - x.y)[0]; return { actor: a }; }
   return null;
 }
+let clickMark = null;
 function onClick(e) {
-  const h = hitTest(...worldPos(e));
-  if (!h) return;
-  if (h.pet) h.pet.heartUntil = now + 2000;
+  const [wx, wy] = worldPos(e);
+  const h = hitTest(wx, wy);
+  if (!h) {
+    // 바닥 클릭 → 그 자리로 걸어가기 (걸을 수 있는 칸이나 의자만)
+    const c = Math.floor(wx / T), r = Math.floor(wy / T);
+    if (isFloor(c, r) && (walkable(c, r) || SEAT_TILES.has(tkey(c, r)))) {
+      clickMark = { x: c * T + 8, y: r * T + 8, until: now + 700 };
+      emit('floor', { col: c, row: r, room: MAP[r][c] });
+    }
+    return;
+  }
+  if (h.pet) h.pet.heartUntil = now + 2500;
   else if (h.board) emit('board');
   else if (h.actor && h.actor.kind === 'human') emit('human', h.actor.data);
   else if (h.actor) emit('actor', h.actor.kind === 'main' ? h.actor.data : h.actor.parent);
 }
-function onMove(e) { cv.style.cursor = hitTest(...worldPos(e)) ? 'pointer' : ''; }
+function onMove(e) {
+  const [wx, wy] = worldPos(e), c = Math.floor(wx / T), r = Math.floor(wy / T);
+  cv.style.cursor = hitTest(wx, wy) ? 'pointer' : (isFloor(c, r) && (walkable(c, r) || SEAT_TILES.has(tkey(c, r))) ? 'crosshair' : '');
+}
 let boardBadge = '';
 const marks = new Map();
 const profiles = new Map();   // 이름 → { char, hue, claudeChar, claudeHue, claudeName }
@@ -613,8 +694,9 @@ function clipText(s, maxW) {
 
 function labelOf(a) {
   const d = a.data;
+  if (compact && a.kind !== 'human' && d.state !== 'wait') return { who: a.kind === 'sub' ? '↳' : '🤖 ' + claudeNameOf(d.user), text: '' };
   if (a.kind === 'human') {
-    const st = { meeting: '📅 회의 중', focus: '🎧 집중' }[d.status] || '';
+    const st = d.pos ? '' : { meeting: '📅 회의 중', focus: '🎧 집중', break: '☕ 휴식' }[d.status] || '';
     return { who: (marks.get(d.user) || '') + d.user, text: a.leaving ? '퇴근 🛗' : st, human: true };
   }
   const who = a.kind === 'sub' ? '↳ ' + d.desc : (marks.get(d.user) || '') + '🤖 ' + claudeNameOf(d.user);
@@ -646,6 +728,18 @@ function drawOverlays() {
     const bx = 20 * T * Z, by = (2 * T + 7) * Z, bw = ctx.measureText(boardBadge).width + F, bh = F * 1.6;
     ctx.fillStyle = 'rgba(242,166,90,.95)'; roundRect(bx - bw / 2, by - bh / 2, bw, bh, bh / 2); ctx.fill();
     ctx.fillStyle = '#241505'; ctx.textAlign = 'center'; ctx.fillText(boardBadge, bx, by + 1);
+  }
+  // 클릭한 자리 표시 + 쓰다듬은 펫 이름
+  if (clickMark && clickMark.until > now) {
+    const k = (clickMark.until - now) / 700;
+    ctx.strokeStyle = `rgba(242,166,90,${k})`; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.ellipse(clickMark.x * Z, (clickMark.y + 4) * Z, (6 + (1 - k) * 4) * Z, (3 + (1 - k) * 2) * Z, 0, 0, 7); ctx.stroke();
+  }
+  for (const p of pets) if (p.heartUntil > now && p.name) {
+    ctx.font = `600 ${F}px -apple-system, "Apple SD Gothic Neo", sans-serif`; ctx.textAlign = 'center';
+    const w = ctx.measureText(p.name).width + F, h = F * 1.6, y = (p.y - 36) * Z - h;
+    ctx.fillStyle = 'rgba(230,69,102,.92)'; roundRect(p.x * Z - w / 2, y, w, h, h / 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(p.name, p.x * Z, y + h / 2 + 1);
   }
   // 캐릭터 이름표 + 하는 일 (겹치면 위로 쌓기)
   const placed = [];
@@ -724,14 +818,22 @@ function frame(t) {
     ctx.globalAlpha = 1;
   }
   drawOverlays();
-  requestAnimationFrame(frame);
+  schedule();
 }
+// 그리기 반복: PIP 창으로 옮기면 그 창의 타이머로 돌린다 (본 창이 뒤로 가도 멈추지 않게)
+let rafWin = window, bgTick = false, loopGen = 0;
+function schedule() {
+  const g = loopGen, run = () => { if (g === loopGen) frame(performance.now()); };
+  if (bgTick && document.hidden) setTimeout(run, 100);
+  else (rafWin && !rafWin.closed ? rafWin : window).requestAnimationFrame(run);
+}
+function restartLoop() { loopGen++; schedule(); }
 
 
 // ======================================================================
 //  바깥에서 쓰는 함수들
 // ======================================================================
-export const ready = loadAssets().then(buildWorld);
+export const ready = loadAssets().then(() => { IMG.pet_rabbit = makeRabbitSheet(); buildWorld(); });
 export function start(canvas, stage, onEvent) {
   cv = canvas; ctx = cv.getContext('2d'); stageEl = stage;
   if (onEvent) emit = onEvent;
@@ -739,7 +841,32 @@ export function start(canvas, stage, onEvent) {
   window.addEventListener('resize', resize);
   cv.addEventListener('click', onClick);
   cv.addEventListener('mousemove', onMove);
-  requestAnimationFrame(frame);
+  restartLoop();
+}
+// 캔버스를 다른 곳(PIP 창)으로 옮겼을 때: 크기 기준과 타이머 창을 바꾼다
+export function rehost(el, win) {
+  stageEl = el; rafWin = win || window;
+  if (win && win !== window) win.addEventListener('resize', resize);
+  resize(); restartLoop();
+}
+export function setCompact(b) { compact = !!b; }
+export function setBackgroundTick(b) { bgTick = !!b; restartLoop(); }
+export function setMe(user) { meUser = user; }
+// 펫 목록 [{ id, owner(멤버 id), kind: dog|cat|rabbit, name }]
+export function setPets(list) {
+  const old = new Map(pets.map(p => [p.id, p]));
+  const tiles = LOUNGE();
+  pets = list.map(n => {
+    const p = old.get(n.id) || (() => { const [c, r] = tiles[Math.floor(Math.random() * tiles.length)] || [9, 23]; return { x: c * T + 8, y: r * T + 8, path: [], dir: 'down', until: 0, heartUntil: 0 }; })();
+    return Object.assign(p, n);
+  });
+}
+// 꾸미기 미리보기용 펫 그림 (정면 쉬는 모습)
+export function petPreview(kind) {
+  const img = IMG[PET_IMG[kind]]; if (!img) return '';
+  const c = document.createElement('canvas'); c.width = 16; c.height = 32;
+  c.getContext('2d').drawImage(img, 48, 0, 16, 32, 0, 0, 16, 32);
+  return c.toDataURL();
 }
 // 멤버마다 고정 캐릭터 지정 { 이름: 0~5 }
 export function setUserChars(map) { for (const [u, i] of Object.entries(map)) userChar.set(u, i); }

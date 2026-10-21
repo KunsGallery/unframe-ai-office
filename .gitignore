@@ -4,3 +4,4 @@ node_modules/
 # 이메일이 들어 있는 파일은 공개 저장소에 올리지 않는다 (이 PC에서만 사용)
 members.json
 firestore.rules
+.claude/
