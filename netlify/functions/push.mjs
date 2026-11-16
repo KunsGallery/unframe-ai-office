@@ -11,7 +11,7 @@ import { VAPID_PUBLIC_KEY } from '../../web/push-config.js';
 const emailHash = email => crypto.createHash('sha256').update('claude-office:' + email).digest('hex');
 const memberOf = email => MEMBERS.find(m => m.emailHash === emailHash(email)) || null;
 // 받는 사람 쪽 설정(kinds)으로 거르는 알림 종류. claude-*·test는 자기 기기로만 보낼 수 있다
-const KINDS = ['chat', 'request', 'board', 'event', 'claude-wait', 'claude-done', 'test'];
+const KINDS = ['chat', 'request', 'board', 'event', 'cheer', 'claude-wait', 'claude-done', 'test'];
 const SELF_ONLY = new Set(['claude-wait', 'claude-done', 'test']);
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -60,7 +60,7 @@ export default async req => {
       kinds: ((f.kinds && f.kinds.arrayValue && f.kinds.arrayValue.values) || []).map(v => v.stringValue),
       sub: { endpoint: f.endpoint && f.endpoint.stringValue, keys: { p256dh: k.p256dh && k.p256dh.stringValue, auth: k.auth && k.auth.stringValue } },
     };
-  }).filter(s => s.sub.endpoint && s.sub.keys.p256dh && s.sub.keys.auth && (kind === 'test' || s.kinds.includes(kind)));
+  }).filter(s => s.sub.endpoint && s.sub.keys.p256dh && s.sub.keys.auth && (kind === 'test' || s.kinds.includes(kind) || (kind === 'cheer' && s.kinds.includes('chat'))));
 
   webpush.setVapidDetails(new URL(req.url).origin.startsWith('http://localhost') ? 'https://unframe-office.netlify.app' : new URL(req.url).origin, VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
   let sent = 0, removed = 0;

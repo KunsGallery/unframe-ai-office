@@ -8,10 +8,11 @@ export const KIND_LABEL = {
   request: '🙋 확인 요청과 답',
   board: '📋 나에게 맡긴 할 일',
   event: '📅 새 일정',
+  cheer: '👏 상대의 응원',
   'claude-wait': '🤖 내 Claude가 승인을 기다릴 때',
   'claude-done': '✅ 내 Claude 작업이 끝났을 때',
 };
-export const DEFAULT_KINDS = ['chat', 'request', 'board', 'event', 'claude-wait'];
+export const DEFAULT_KINDS = ['chat', 'request', 'board', 'event', 'cheer', 'claude-wait'];
 
 const ua = navigator.userAgent;
 export const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

@@ -44,6 +44,16 @@ export function firebaseWorkStore(F, db, meId) {
     onPetNotes: (day, cb) => F.onSnapshot(F.query(F.collection(db, 'petNotes'), F.where('member', '==', meId), F.where('day', '==', day)), s => cb(conv(s)), () => cb([])),
     getAssistant: async () => { const d = await F.getDoc(F.doc(db, 'assistant', meId)); return d.exists() ? d.data() : null; },
     saveAssistant: a => F.setDoc(F.doc(db, 'assistant', meId), { ...a, updatedAt: F.serverTimestamp() }),
+    // 📮 편지 · 👏 응원 · 🍖 펫 상태
+    onLetters: cb => F.onSnapshot(F.collection(db, 'letters'), s => cb(conv(s).map(x => ({ ...x, at: ms(x.at) }))), () => cb([])),
+    onCheers: cb => {
+      const m = merge2(cb), c = F.collection(db, 'cheers');
+      F.onSnapshot(F.query(c, F.where('to', '==', meId)), s => m(0)(conv(s).map(x => ({ ...x, at: ms(x.at) }))), () => m(0)([]));
+      F.onSnapshot(F.query(c, F.where('from', '==', meId)), s => m(1)(conv(s).map(x => ({ ...x, at: ms(x.at) }))), () => m(1)([]));
+    },
+    sendCheer: c => F.addDoc(F.collection(db, 'cheers'), { ...c, from: meId, at: F.serverTimestamp() }),
+    onPetState: cb => F.onSnapshot(F.collection(db, 'petState'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()]))), () => cb({})),
+    feedPet: (fed, day) => F.setDoc(F.doc(db, 'petState', meId), { fed, lastFed: day, updatedAt: F.serverTimestamp() }),
   };
 }
 
@@ -122,6 +132,13 @@ export function demoWorkStore(meId, otherId) {
     }
   }
   let assistant = null;
+  const letters = [
+    { id: 'l1', member: meId, week: addDays(today, -13), pet: '재우의 보더콜리', at: now - 8 * 86400e3, text: '재우님께 📮\n\n이번 주 독서를 6일이나 했어요! 특히 목요일엔 38쪽이나 읽었죠. 글쓰기는 화요일·수요일에 쉬어서 조금 아쉬웠어요.\n\n기분은 주 초반엔 😐였다가 주말에 😄까지 올라갔어요. 「10월 정산 자료 정리」도 끝냈고요.\n\n다음 주엔 글쓰기를 아침 10분만 먼저 해 볼까요? 🐾\n\n— 재우의 보더콜리' },
+    ...(otherId ? [{ id: 'l2', member: otherId, week: addDays(today, -13), pet: '박소연의 토끼', at: now - 8 * 86400e3, text: '소연님께 🐰\n\n영어 공부를 매일 했어요! 7일 연속이에요. 물은 하루 평균 6잔, 목표까지 2잔 남았어요.\n\n수요일 회의가 길었는데도 저녁에 일기를 썼죠. 대단해요 ✨\n\n다음 주는 물 한 잔을 점심에 더 마셔 봐요.\n\n— 박소연의 토끼' }] : []),
+  ];
+  const cheers = otherId ? [{ id: 'c1', from: otherId, to: meId, tracker: 'read', label: '📖 독서', emoji: '👏', day: today, at: now - 1800e3 }] : [];
+  let petState = { [meId]: { fed: 3, lastFed: addDays(today, -1) } };
+  const subsX = { l: [], c: [], ps: [] };
   const notes = [{ id: 'n1', member: meId, day: today, slot: 'brief', text: '좋은 아침이에요 멍! 🐾 오늘 기분은 어때요? 서울은 흐리고 3~11°C예요. 오후 4시 박소연님 외근이 있고, 마감 지난 할 일 「오후 3시 배포」가 하나 있어요.', at: now - 3600e3 }];
   const visible = x => x.owner === meId || x.shared;
   const subs = { p: [], e: [], m: [] };
@@ -153,6 +170,13 @@ export function demoWorkStore(meId, otherId) {
     async saveMood(day, patch) { const id = `${meId}__${day}`; let m = M.find(x => x.id === id); if (!m) M.push(m = { id, owner: meId, day, shared: true }); Object.assign(m, patch); pushM(); },
     onPetNotes: (day, cb) => cb(notes.filter(x => x.day === day)),
     getAssistant: async () => assistant,
+    onLetters: cb => { subsX.l.push(cb); cb(letters.slice()); },
+    onCheers: cb => { subsX.c.push(cb); cb(cheers.slice()); },
+    sendCheer: async c => { cheers.push({ ...c, id: 'c' + Date.now(), from: meId, at: Date.now() }); subsX.c.forEach(cb => cb(cheers.slice()));
+      // 데모: 상대도 잠시 뒤 응원을 돌려준다
+      if (otherId) setTimeout(() => { cheers.push({ id: 'c' + Date.now(), from: otherId, to: meId, tracker: '', label: '오늘 하루', emoji: '🙌', day: today, at: Date.now() }); subsX.c.forEach(cb => cb(cheers.slice())); }, 4000); },
+    onPetState: cb => { subsX.ps.push(cb); cb({ ...petState }); },
+    feedPet: async (fed, day) => { petState = { ...petState, [meId]: { fed, lastFed: day } }; subsX.ps.forEach(cb => cb({ ...petState })); },
     saveAssistant: async a => { assistant = { ...a }; },
   };
 }

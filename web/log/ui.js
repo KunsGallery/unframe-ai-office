@@ -92,9 +92,10 @@ export function initLog(ctx) {
     if (!list.length && !mood) return '';
     const st = list.map(S), met = st.filter(s => s.todayMet).length, top = Math.max(0, ...st.map(s => s.streak));
     return `<section class="lg-partner">
-      <div class="lg-ph"><img alt="" src="${avatar(m)}"><b>${esc(m.name)}님</b> <span class="lg-pn">${met}/${list.length} 완료</span>${top ? ` <span class="lg-streak">🔥${top}일</span>` : ''}${mood && mood.score ? ` <span class="lg-pmood" title="오늘 기분">${ctx.moodEmoji(mood.score)}</span>` : ''}</div>
+      <div class="lg-ph"><img alt="" src="${avatar(m)}"><b>${esc(m.name)}님</b>${ctx.petLevel ? ` <span class="lg-plv" title="${esc(m.name)}님 펫 레벨">🐾 Lv.${ctx.petLevel(m.id)}</span>` : ''} <span class="lg-pn">${met}/${list.length} 완료</span>${top ? ` <span class="lg-streak">🔥${top}일</span>` : ''}${mood && mood.score ? ` <span class="lg-pmood" title="오늘 기분">${ctx.moodEmoji(mood.score)}</span>` : ''}</div>
       ${mood && (mood.note || mood.lunch) ? `<p class="lg-pnote">${mood.note ? `“${esc(mood.note)}”` : ''}${mood.lunch ? ` 🍱 ${esc(mood.lunch)}` : ''}</p>` : ''}
-      <ul>${list.map((t, i) => `<li class="${st[i].todayMet ? 'met' : ''}" style="--c:${esc(t.color || '#8b9cff')}"><span>${esc(t.emoji || '•')} ${esc(t.name)}</span><b>${st[i].todayAmt ? esc(fmtAmount(t, st[i].todayAmt)) : '—'}</b></li>`).join('')}</ul>
+      <ul>${list.map((t, i) => { const done = ctx.cheered && ctx.cheered(m.id, t.id); return `<li class="${st[i].todayMet ? 'met' : ''}" style="--c:${esc(t.color || '#8b9cff')}"><span>${esc(t.emoji || '•')} ${esc(t.name)}</span><b>${st[i].todayAmt ? esc(fmtAmount(t, st[i].todayAmt)) : '—'}</b>
+        <button type="button" class="lg-cheer${done ? ' on' : ''}" data-cheer="${t.id}" data-to="${m.id}" data-label="${esc(`${t.emoji || ''} ${t.name}`.trim())}" ${done ? 'disabled' : ''} aria-label="${esc(t.name)} 응원하기" title="${done ? '오늘 응원했어요' : '응원 보내기'}">${done ? '✓' : '👏'}</button></li>`; }).join('')}</ul>
     </section>`;
   }
   const TEMPLATES = [
@@ -303,12 +304,14 @@ export function initLog(ctx) {
       </section>
       ${next.length ? `<section class="lg-sec light tight"><div class="lg-kicker">다음 목표</div>
         <ul class="lg-next">${next.slice(0, 6).map(a => `<li><div><b>${esc(a.title)}</b><span>${esc(progressText(a))}</span></div><div class="lg-bar"><i style="width:${Math.min(100, a.progress * 100)}%"></i></div></li>`).join('')}</ul></section>` : ''}
+      <div id="lgAchExtra"></div>
       <section class="lg-sec light tight"><div class="lg-kicker">모은 업적</div>
         ${earned.length ? `<ul class="lg-badges">${[...earned].reverse().map(a => {
           const t = trackers.find(x => x.id === a.tracker);
           return `<li style="--c:${esc((t && t.color) || '#8b9cff')}"><b>${esc(a.big)}</b><span class="u">${esc(a.unit)}</span><small>${esc(a.kind === 'first' ? `${a.tag} · ${a.day.replaceAll('-', '.')}` : a.tag)}</small></li>`;
         }).join('')}</ul>` : '<p class="lg-lede">첫 기록을 남기면 첫 업적이 생겨요.</p>'}
       </section>`;
+    ctx.afterAchieve && ctx.afterAchieve();
   }
   function progressText(a) {
     const t = trackers.find(x => x.id === a.tracker);
@@ -434,6 +437,7 @@ export function initLog(ctx) {
     newTracker: () => openTrackerDialog(),
     /** 문서·캘린더가 쓰는 공용 데이터 */
     data: () => ({ trackers, byT, loaded: tLoaded && lLoaded }),
+    achCount: () => (tLoaded && lLoaded ? myAch().earned.length : 0),
     onChange: fn => listeners.push(fn),
     openTracker: id => { sel = id; year = new Date().getFullYear(); ctx.go('log'); },
   };

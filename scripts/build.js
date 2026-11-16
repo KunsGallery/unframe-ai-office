@@ -238,7 +238,9 @@ service cloud.firestore {
       function okTime(t) { return t is string && t.matches('[0-2][0-9]:[0-5][0-9]'); }
       allow read: if isMember() && mid == myId();
       allow write: if isMember() && mid == myId()
-        && request.resource.data.keys().hasOnly(['briefOn', 'briefTime', 'lunchOn', 'lunchTime', 'dueOn', 'dueTime', 'eveningOn', 'eveningTime', 'weekend', 'city', 'style', 'shareMood', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['briefOn', 'briefTime', 'lunchOn', 'lunchTime', 'dueOn', 'dueTime', 'eveningOn', 'eveningTime', 'letterOn', 'letterTime', 'weekend', 'city', 'style', 'shareMood', 'updatedAt'])
+        && (!('letterOn' in request.resource.data) || request.resource.data.letterOn is bool)
+        && (!('letterTime' in request.resource.data) || okTime(request.resource.data.letterTime))
         && request.resource.data.briefOn is bool && request.resource.data.lunchOn is bool && request.resource.data.dueOn is bool && request.resource.data.eveningOn is bool
         && okTime(request.resource.data.briefTime) && okTime(request.resource.data.lunchTime) && okTime(request.resource.data.dueTime) && okTime(request.resource.data.eveningTime)
         && request.resource.data.weekend is bool && request.resource.data.shareMood is bool
@@ -246,10 +248,43 @@ service cloud.firestore {
         && request.resource.data.style is string && request.resource.data.style.size() <= 200
         && request.resource.data.updatedAt == request.time;
     }
-    // 🐾 펫이 보낸 말 (서버만 씀, 본인만 읽음)
+    // 🐾 펫이 보낸 말 (본인만 읽음). 서버가 그 사람이 맡긴 로그인으로 쓴다
     match /petNotes/{nid} {
       allow read: if isMember() && resource.data.member == myId();
-      allow write: if false;
+      allow create, update: if isMember() && nid.matches(myId() + '__.+')
+        && request.resource.data.keys().hasOnly(['member', 'day', 'slot', 'text', 'skipped', 'at'])
+        && request.resource.data.member == myId()
+        && request.resource.data.text is string && request.resource.data.text.size() <= 1500;
+    }
+    // 📮 주간 회고 편지 (펫이 일요일 저녁에 씀). 둘이 서로의 편지를 볼 수 있다
+    match /letters/{lid} {
+      allow read: if isMember();
+      allow create, update: if isMember() && lid.matches(myId() + '__[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.resource.data.keys().hasOnly(['member', 'week', 'text', 'pet', 'at'])
+        && request.resource.data.member == myId()
+        && request.resource.data.text is string && request.resource.data.text.size() <= 1500;
+    }
+    // 👏 응원 (보낸 사람·받은 사람만 봄)
+    match /cheers/{cid} {
+      allow read: if isMember() && (resource.data.from == myId() || resource.data.to == myId());
+      allow create: if isMember()
+        && request.resource.data.keys().hasOnly(['from', 'to', 'tracker', 'label', 'emoji', 'day', 'at'])
+        && request.resource.data.from == myId()
+        && request.resource.data.to in members().values() && request.resource.data.to != myId()
+        && request.resource.data.tracker is string && request.resource.data.tracker.size() <= 40
+        && request.resource.data.label is string && request.resource.data.label.size() <= 60
+        && request.resource.data.emoji is string && request.resource.data.emoji.size() <= 16
+        && request.resource.data.day is string && request.resource.data.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.resource.data.at == request.time;
+    }
+    // 🍖 펫 상태 (간식 준 횟수). 펫 레벨은 기록으로 계산하고, 여기엔 먹은 간식만
+    match /petState/{mid} {
+      allow read: if isMember();
+      allow write: if isMember() && mid == myId()
+        && request.resource.data.keys().hasOnly(['fed', 'lastFed', 'updatedAt'])
+        && request.resource.data.fed is int && request.resource.data.fed >= 0 && request.resource.data.fed <= 100000
+        && request.resource.data.lastFed is string && request.resource.data.lastFed.size() <= 10
+        && request.resource.data.updatedAt == request.time;
     }
     // 😊 하루 기분·점심 ('멤버id__날짜'). 쓰기는 본인, 읽기는 본인 또는 공유
     match /moods/{mid} {

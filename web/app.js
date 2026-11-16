@@ -97,6 +97,15 @@ async function firebaseStore() {
       if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
       return j;
     },
+    petApi: async body => {
+      const res = await fetch('/.netlify/functions/pet-now', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+      return j;
+    },
+    refreshToken: () => auth.currentUser.refreshToken,
     petChat: async p => {
       const res = await fetch('/.netlify/functions/pet-chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
@@ -256,9 +265,19 @@ function demoStore() {
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
     savePushSub: async () => {}, deletePushSub: async () => {}, myPushSubs: async () => [],
+    petApi: async body => (body.action === 'status' ? { connected: true, demo: true } : { ok: true, demo: true }),
+    refreshToken: () => 'demo',
     // 데모: 말에 따라 정해진 답 + 제안 (실제로는 Claude가 씀)
-    petChat: async ({ messages, context }) => {
+    petChat: async ({ messages, context, mode, facts }) => {
       await new Promise(r => setTimeout(r, 1100));
+      if (mode === 'insight') {
+        const h = facts.habits[0], best = h ? [...h.weekdayRate].sort((a, b) => b.pct - a.pct)[0] : null, worst = h ? [...h.weekdayRate].sort((a, b) => a.pct - b.pct)[0] : null;
+        return { insights: [
+          ...(h ? [{ emoji: '📅', title: `${h.name}는 ${best.wd}요일에 제일 잘 돼요`, detail: `최근 90일 ${best.wd}요일에는 ${best.pct}% 기록했어요. 반대로 ${worst.wd}요일은 ${worst.pct}%예요. ${worst.wd}요일엔 목표를 절반으로 줄여 볼까요?` },
+            { emoji: h.last30 >= h.prev30 ? '📈' : '📉', title: `최근 30일 ${h.last30 >= h.prev30 ? '늘었어요' : '줄었어요'}`, detail: `${h.name} 최근 30일 ${h.last30}${h.unit}, 그 전 30일 ${h.prev30}${h.unit}예요.` }] : []),
+          { emoji: '😊', title: '습관을 한 날 기분이 더 좋았어요', detail: '데모 데이터 기준이에요. 실제 기록이 쌓이면 Claude가 진짜 패턴을 찾아요.' },
+        ] };
+      }
       const q = messages[messages.length - 1].content, h = context.habits || [];
       const find = re => h.find(x => re.test(x.name));
       const n = +((/(\d+)\s*(분|쪽|장|잔|km)?/.exec(q) || [])[1] || 0);
@@ -277,7 +296,7 @@ function demoStore() {
     },
     petNow: async slot => {
       await new Promise(r => setTimeout(r, 900));
-      const text = { brief: '좋은 아침이에요 멍! ☀️ 오늘 기분은 어때요? 서울 맑음, 2~12°C. 오후 2시 운영 회의가 있어요.', lunch: '점심은 뭐 먹었어요 멍? 🍱 오후도 같이 힘내요!', due: '마감 지난 할 일이 1개 있어요: 오후 3시 배포. 같이 챙겨요 🐾', evening: '오늘 📖 독서 아직이에요! 🔥29일 연속, 오늘도 이어가요 멍.' }[slot];
+      const text = { brief: '좋은 아침이에요 멍! ☀️ 오늘 기분은 어때요? 서울 맑음, 2~12°C. 오후 2시 운영 회의가 있어요.', lunch: '점심은 뭐 먹었어요 멍? 🍱 오후도 같이 힘내요!', due: '마감 지난 할 일이 1개 있어요: 오후 3시 배포. 같이 챙겨요 🐾', evening: '오늘 📖 독서 아직이에요! 🔥29일 연속, 오늘도 이어가요 멍.', letter: '재우님께 📮\n\n이번 주 독서를 6일 했어요. 목요일엔 38쪽! 글쓰기는 화·수요일에 쉬었네요.\n\n기분은 주 초반 😐에서 주말 😄까지 올라갔어요.\n\n다음 주엔 글쓰기를 아침 10분만 먼저 해 볼까요? 🐾\n\n— 재우의 보더콜리' }[slot];
       localNotify('🐕 ' + (profiles[me.id]?.petName || me.name + '의 보더콜리'), text, 'pet-' + slot, './#today');
       return { sent: 1, text, demo: true };
     },
@@ -367,7 +386,8 @@ function loginError(e) {
 let sessions = [];
 function applyProfiles() {
   office.setProfiles(Object.fromEntries(MEMBERS.map(m => [m.name, look(m)])));
-  office.setPets(MEMBERS.map(m => ({ m, l: look(m) })).filter(x => PET_KO[x.l.pet]).map(({ m, l }) => ({ id: m.id, owner: m.id, kind: l.pet, name: petNameOf(m, l) })));
+  // 펫 이름표에 레벨 (기록할수록 자란다)
+  office.setPets(MEMBERS.map(m => ({ m, l: look(m) })).filter(x => PET_KO[x.l.pet]).map(({ m, l }) => ({ id: m.id, owner: m.id, kind: l.pet, name: petNameOf(m, l) + (petUi ? ` Lv.${petUi.levelOf(m.id)}` : '') })));
   if (me) office.setMe(me.name);
   if (me) $('me').innerHTML = `<img alt="" src="${avatar(me)}"><span>${esc(me.name)} <small>${esc(me.title || '')}</small></span>`;
 }
@@ -1343,6 +1363,7 @@ const PANE = { today: 'paneToday', calendar: 'paneCalendar', docs: 'paneDocs', l
 let currentTab = 'today', logUi = null, docsUi = null, calUi = null, petUi = null;
 function showTab(tab, { push = true } = {}) {
   // 펫 알림을 누르고 들어오면: #mood → 오늘 기분, #lunch → 점심
+  if (tab === 'letters') { setTimeout(() => petUi && petUi.openLetters(), 100); tab = 'achieve'; push = true; }
   if (tab === 'mood' || tab === 'lunch') { const k = tab; setTimeout(() => petUi && petUi.focus(k), 200); tab = 'today'; push = true; }
   if (!TABS.includes(tab)) tab = 'today';
   const changedTab = tab !== currentTab;
@@ -1373,16 +1394,21 @@ function startLog() {
   // 업적 축하를 한 번만 보이려고 본 업적 id를 profiles에 남긴다 (생김새 값도 같이 써야 규칙을 통과)
   const saveSeen = ids => { const l = look(me); return store.saveProfile({ char: l.char, hue: l.hue, claudeChar: l.claudeChar, claudeHue: l.claudeHue, claudeName: l.claudeName, pet: l.pet, petName: l.petName, seenAchievements: ids.slice(-400) }); };
   const logStore = store.logStore(), work = store.workStore();
-  const petHooks = { moodOf: (id, d) => (petUi ? petUi.moodFor(id, d) : null), moodEmoji, moods: () => (petUi ? petUi.moods() : []) };
+  const petHooks = { moodOf: (id, d) => (petUi ? petUi.moodFor(id, d) : null), moodEmoji, moods: () => (petUi ? petUi.moods() : []),
+    cheered: (to, tid) => (petUi ? petUi.cheered(to, tid) : false), petLevel: id => (petUi ? petUi.levelOf(id) : 1), afterAchieve: () => petUi && petUi.renderAchExtra() };
   logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab, ...petHooks, afterToday: () => petUi && petUi.renderSlot() });
   petUi = initPet({ work, me, toast, petNow: slot => store.petNow(slot), changed: () => { if (currentTab === 'today') logUi.show('today'); calUi && calUi.refresh(); },
     petInfo: m => { const l = look(m); return { kind: l.pet, ko: PET_KO[l.pet] || '비서', name: PET_KO[l.pet] ? petNameOf(m, l) : `${m.name}의 비서`, img: PET_KO[l.pet] ? office.petPreview(l.pet) : '' }; },
     petChat: p => store.petChat(p), logs: logUi, logStore, nameOf,
     events: () => (calUi ? calUi.events() : []), tasks: () => boardItems,
-    addTask: (text, due) => store.addBoard(text, me.id, due) });
+    addTask: (text, due) => store.addBoard(text, me.id, due),
+    petApi: b => store.petApi(b), refreshToken: () => store.refreshToken(), achCount: () => logUi.achCount(),
+    notify: (ids, kind, title, body, tag, url) => pushTo(ids, kind, title, body, tag, url),
+    onFeed: () => office.petHeart(me.id), onLevels: () => applyProfiles() });
   docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
   calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems, ...petHooks,
     notifyOthers: (title, body, tag) => pushTo(MEMBERS.filter(m => m.id !== me.id).map(m => m.id), 'event', title, body, tag, './#calendar') });
+  logUi.onChange(() => applyProfiles());   // 기록이 바뀌면 오피스 펫 레벨도
   showTab(location.hash.slice(1) || 'today', { push: false });
 }
 

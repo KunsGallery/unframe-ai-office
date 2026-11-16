@@ -941,6 +941,11 @@ export function setPets(list) {
     return Object.assign(p, n);
   });
 }
+// 🍖 간식을 먹은 펫: 하트를 띄우고 잠깐 신나게 돌아다닌다
+export function petHeart(id, ms = 5000) {
+  const p = pets.find(x => x.id === id); if (!p) return;
+  p.heartUntil = performance.now() + ms; p.until = 0;
+}
 // 🐾 펫 작은 창: 내 펫 하나를 크게 그리고, 내 Claude 상태에 따라 반응한다
 // getState() → { kind, name, mood: 'wait'|'done'|'work'|'idle'|'remind', line, say }
 // say: 펫이 말풍선으로 하는 말. onTap: 펫을 눌렀을 때 (알림 "했어요" 처리 등)

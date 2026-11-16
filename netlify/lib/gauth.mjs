@@ -2,6 +2,8 @@
 // 환경변수 FIREBASE_SERVICE_ACCOUNT: Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → 새 비공개 키(JSON) 내용 그대로
 // 외부 패키지 없이 JWT(RS256)를 만들어 액세스 토큰으로 바꾼다. 서비스 계정 요청은 보안 규칙을 거치지 않으니 서버에서만 쓴다.
 import crypto from 'node:crypto';
+import { getStore } from '@netlify/blobs';
+import { firebaseConfig } from '../../web/firebase-config.js';
 
 let cache = { token: null, exp: 0 };
 export function serviceAccount() {
@@ -81,4 +83,20 @@ export function firestore(projectId, token) {
     },
     async remove(name) { await fetch(name.startsWith('projects/') ? `https://firestore.googleapis.com/v1/${name}` : `${base}/${name}`, { method: 'DELETE', headers }).catch(() => {}); },
   };
+}
+
+// ---------- 서비스 계정 없이: 멤버가 맡긴 로그인(refresh token)으로 그 사람의 ID 토큰 받기 ----------
+// 조직 정책으로 서비스 계정 키를 만들 수 없을 때 쓰는 방법. 각자 앱에서 "펫 비서"를 켜면 refresh token이
+// Netlify Blobs(서버 전용 저장소)에 들어가고, 정해진 시간에 서버가 그 사람 권한으로 Firestore를 읽는다 (보안 규칙 그대로 적용)
+
+export const petVault = () => getStore('pet-assistant');
+export async function idTokenFromRefresh(refreshToken, site) {
+  const r = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(firebaseConfig.apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(site ? { Referer: site + '/' } : {}) },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+  });
+  if (!r.ok) throw new Error('로그인 갱신 실패 (' + r.status + ')');
+  const j = await r.json();
+  return { idToken: j.id_token, uid: j.user_id };
 }

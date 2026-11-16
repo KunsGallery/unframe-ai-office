@@ -39,6 +39,51 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
+// 🔮 내 패턴 찾기: 앱이 계산한 사실(요일별 기록률, 최근 30일 추세, 기분과 습관)에서 흥미로운 패턴을 고른다
+const INS_SCHEMA = {
+  type: 'object',
+  properties: {
+    insights: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          emoji: { type: 'string' },
+          title: { type: 'string', description: '한 줄 요약 (25자 이내)' },
+          detail: { type: 'string', description: '근거 숫자와 함께 1~2문장 + 작은 제안' },
+        },
+        required: ['emoji', 'title', 'detail'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['insights'],
+  additionalProperties: false,
+};
+async function insight(me, body) {
+  const facts = JSON.stringify(body.facts || {}).slice(0, 16000);
+  const pet = { name: str(body.pet && body.pet.name, 30) || '펫', ko: str(body.pet && body.pet.ko, 12) || '펫' };
+  const client = new Anthropic();
+  const msg = await client.beta.messages.create({
+    model: 'claude-opus-5-5',
+    max_tokens: 4000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'medium', format: { type: 'json_schema', schema: INS_SCHEMA } },
+    system: `너는 ${me.name}님의 반려 ${pet.ko} "${pet.name}"이고, 기록을 읽어 주는 다정한 분석가야.
+<facts>는 앱이 최근 90일 기록으로 계산한 숫자야. 여기서 ${me.name}님이 몰랐을 법한 패턴 3~5개를 골라.
+- 예: 가장 잘 되는 요일/잘 끊기는 요일, 최근 30일과 그 전 30일 비교, 어떤 습관을 한 날 기분이 더 좋은지, 기분이 낮은 요일.
+- 숫자는 facts에 있는 것만 그대로 쓰고 지어내지 마. 표본이 적으면(예: 기분 기록 5일 미만) 그 패턴은 쓰지 말거나 "아직 기록이 적지만"이라고 밝혀.
+- 상관을 인과처럼 말하지 마("~한 날 기분이 좋았어요"는 되고 "~해서 좋아졌어요"는 안 돼).
+- 각 패턴마다 작고 구체적인 제안 하나. 한국어, 다정하게, 펫 말투는 아주 살짝.`,
+    messages: [{ role: 'user', content: `<facts>\n${facts}\n</facts>\n내 패턴을 찾아 줘.` }],
+  }, { timeout: 25000 });
+  if (msg.stop_reason === 'refusal') return { insights: [] };
+  const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  try { const j = JSON.parse(text); return { insights: (j.insights || []).slice(0, 5).map(x => ({ emoji: str(x.emoji, 8), title: str(x.title, 60), detail: str(x.detail, 300) })) }; }
+  catch { return { insights: [] }; }
+}
+
 export default async req => {
   if (req.method !== 'POST') return json(405, { error: 'POST 요청만 받아요' });
   if (!process.env.ANTHROPIC_API_KEY) return json(500, { error: 'Netlify 환경변수 ANTHROPIC_API_KEY가 없어요' });
@@ -49,6 +94,10 @@ export default async req => {
   if (!me) return json(403, { error: '멤버만 쓸 수 있어요' });
 
   const body = await req.json().catch(() => ({}));
+  if (body.mode === 'insight') {
+    try { return json(200, await insight(me, body)); }
+    catch (e) { return json(e instanceof Anthropic.RateLimitError ? 429 : 502, { error: e instanceof Anthropic.APIError ? `Claude API 오류 (${e.status})` : '패턴을 찾는 중 오류가 났어요' }); }
+  }
   const history = (Array.isArray(body.messages) ? body.messages : []).slice(-16)
     .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role, content: m.content.slice(0, 1500) }));

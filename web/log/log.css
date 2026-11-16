@@ -622,3 +622,44 @@ dialog.pc-dlg::backdrop { background: rgba(5, 5, 12, .65); backdrop-filter: blur
 .em-own input { flex: 1; min-width: 0; min-height: 38px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .05); color: #eef0ff; padding: 0 10px; font: 15px inherit; }
 .em-own button, .em-clear { border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .06); color: #eef0ff; border-radius: 10px; padding: 0 12px; font: 600 13px inherit; cursor: pointer; min-height: 38px; }
 .em-clear { width: 100%; margin-top: 6px; color: #9ba1c6; min-height: 32px; }
+
+/* ===================== 🐾 펫 성장 · 🍖 간식 · 👏 응원 · ✦ 오늘의 한 줄 · 📮 편지 · 🔮 패턴 ===================== */
+.pet-grow { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
+.pet-lv { font: 700 13px var(--f-display); padding: 3px 9px; border-radius: 999px; background: var(--grad); color: #0b0b12; flex: none; }
+.pet-xp { flex: 1; height: 8px; border-radius: 99px; background: var(--dot-off); overflow: hidden; min-width: 40px; }
+.pet-xp i { display: block; height: 100%; border-radius: 99px; background: var(--grad); box-shadow: 0 0 12px rgba(139, 156, 255, .8); transition: width .6s cubic-bezier(.2, .8, .2, 1); }
+.pet-grow small { color: var(--ink2); font-size: 11px; flex: none; font-variant-numeric: tabular-nums; }
+.pet-feed { flex: none; border: 1px solid rgba(251, 191, 36, .5); background: rgba(251, 191, 36, .14); color: #fde68a; border-radius: 999px; padding: 6px 12px; font: 700 13px var(--f-body); cursor: pointer; min-height: 34px; }
+.pet-feed:hover:not(:disabled) { background: rgba(251, 191, 36, .25); box-shadow: 0 0 16px -4px #fbbf24; }
+.pet-feed.empty { border-color: var(--rule); background: transparent; color: var(--ink3); cursor: default; }
+.pet-feel { font-size: 13px; color: var(--ink2); margin-bottom: 4px; }
+.pet-img.fed { animation: pet-fed .9s cubic-bezier(.3, 1.6, .5, 1) 2 !important; }
+@keyframes pet-fed { 0%, 100% { transform: translateY(0) scale(1); } 40% { transform: translateY(-8px) scale(1.12) rotate(-6deg); } 70% { transform: translateY(0) scale(.96) rotate(4deg); } }
+.pet-cheers { display: flex; flex-direction: column; gap: 4px; margin: -6px 0 12px; }
+.pet-cheers span { font-size: 13px; color: #fde68a; background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .2); border-radius: 10px; padding: 6px 10px; }
+.lg-partner li { align-items: center; gap: 8px; }
+.lg-partner li > span { flex: 1; }
+.lg-cheer { flex: none; width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line2); background: rgba(255, 255, 255, .05); font-size: 15px; cursor: pointer; line-height: 1; }
+.lg-cheer:hover:not(:disabled) { background: rgba(251, 191, 36, .18); border-color: rgba(251, 191, 36, .6); transform: scale(1.08); }
+.lg-cheer.on { color: #34d399; border-color: rgba(52, 211, 153, .5); cursor: default; }
+.lg-plv { font: 600 11px var(--f-display); color: #c7d2fe; background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; }
+.daily-card { margin: 12px 20px 0; padding: 14px 16px; border-radius: 18px; border: 1px dashed rgba(139, 156, 255, .35); background: rgba(139, 156, 255, .05); }
+.daily-q { margin: 2px 0 6px; font-size: 15px; line-height: 1.6; }
+.daily-by { color: var(--ink2); font-size: 12px; }
+.daily-a { border: 1px solid var(--line2); background: rgba(255, 255, 255, .05); color: var(--ink); border-radius: 999px; padding: 7px 14px; font: 600 13px var(--f-body); cursor: pointer; }
+.daily-a.open { border-radius: 12px; background: rgba(52, 211, 153, .1); border-color: rgba(52, 211, 153, .4); color: #a7f3d0; text-align: left; }
+.pet-conn { font-size: 12px; color: var(--ink2); margin: 10px 0 0; }
+.ins-list { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.ins-list li { display: flex; gap: 12px; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .04); border: 1px solid var(--rule); }
+.ins-e { font-size: 24px; line-height: 1.2; }
+.ins-list b { font-size: 15px; }
+.ins-list p { margin: 4px 0 0; color: var(--ink2); font-size: 14px; line-height: 1.55; }
+.ins-when { display: block; color: var(--ink3); font-size: 12px; margin-bottom: 10px; }
+.letter-list { list-style: none; padding: 0; margin: 8px 0 14px; display: grid; gap: 10px; }
+.letter-list li > button { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; padding: 14px 16px; border-radius: 18px; border: 1px solid var(--rule); background: linear-gradient(160deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02)); color: var(--ink); cursor: pointer; font-family: var(--f-body); }
+.letter-list li.mine > button { border-left: 3px solid #8b9cff; }
+.letter-list li.theirs > button { border-left: 3px solid #fb923c; }
+.letter-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.letter-top small { color: var(--ink2); font-size: 12px; }
+.letter-text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; color: var(--ink2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.letter-list li.open .letter-text { -webkit-line-clamp: unset; display: block; color: var(--ink); }

@@ -1,17 +1,20 @@
-// 🐾 펫 비서 (화면 쪽): 오늘 탭 맨 위 펫 카드(펫이 한 말 · 오늘 기분 · 점심), 펫 비서 설정
-import { dayKey, addDays, statsFor, fmtAmount, fmtDate } from './model.js';
+// 🐾 펫 비서 (화면 쪽): 오늘 탭 맨 위 펫 카드(펫이 한 말 · 성장 · 간식 · 응원 · 오늘 기분 · 점심),
+// 오늘의 한 줄, 펫 비서 설정, 펫과 대화, 성취 탭의 편지함·내 패턴 찾기
+import { dayKey, addDays, statsFor, fmtAmount, fmtDate, goalOf, parseDay } from './model.js';
+import { dailyLine } from './daily.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export const MOODS = [null, ['😫', '힘듦'], ['😕', '별로'], ['😐', '보통'], ['🙂', '좋음'], ['😄', '최고']];
 export const moodEmoji = s => (MOODS[s] ? MOODS[s][0] : '');
-const DEFAULTS = { briefOn: true, briefTime: '08:30', lunchOn: true, lunchTime: '13:00', dueOn: true, dueTime: '16:00', eveningOn: true, eveningTime: '21:00', weekend: false, city: 'seoul', style: '', shareMood: true };
+const DEFAULTS = { briefOn: true, briefTime: '08:30', lunchOn: true, lunchTime: '13:00', dueOn: true, dueTime: '16:00', eveningOn: true, eveningTime: '21:00', letterOn: true, letterTime: '20:00', weekend: false, city: 'seoul', style: '', shareMood: true };
 const CITIES = { seoul: '서울', seongnam: '성남·판교', suwon: '수원', incheon: '인천', goyang: '고양·일산', busan: '부산', daegu: '대구', daejeon: '대전', gwangju: '광주', ulsan: '울산', jeju: '제주' };
-const SLOT = { brief: ['☀️ 아침 브리핑', '인사 · 오늘 기분 묻기 · 날씨 · 오늘 일정 · 마감 할 일'], lunch: ['🍱 점심 체크인', '점심 뭐 먹었는지 묻고 오후 응원'], due: ['📋 마감 할 일', '오늘 마감·지난 할 일이 남아 있을 때만'], evening: ['🌙 저녁 습관 챙기기', '오늘 아직 안 한 습관 (다 했으면 칭찬)'] };
+const SLOT = { brief: ['☀️ 아침 브리핑', '인사 · 오늘 기분 묻기 · 날씨 · 오늘 일정 · 마감 할 일'], lunch: ['🍱 점심 체크인', '점심 뭐 먹었는지 묻고 오후 응원'], due: ['📋 마감 할 일', '오늘 마감·지난 할 일이 남아 있을 때만'], evening: ['🌙 저녁 습관 챙기기', '오늘 아직 안 한 습관 (다 했으면 칭찬)'], letter: ['📮 주간 회고 편지', '일요일에만 · 한 주를 돌아보는 편지 (성취 탭 편지함)'] };
 
 export function initPet(ctx) {
   const { work, me, toast, petInfo, petNow, petChat } = ctx;
   let moods = [], notes = [], settings = null, notesDay = null, unsubNotes = null;
+  let letters = [], cheers = [], petState = {}, quizOpen = false, fedAnim = 0;
 
   function watchNotes() {
     const d = dayKey();
@@ -24,29 +27,74 @@ export function initPet(ctx) {
   const moodFor = (id, day = dayKey()) => moods.find(m => m.owner === id && m.day === day) || null;
   const greet = () => { const h = new Date().getHours(); return h < 11 ? '좋은 아침이에요! 오늘 기분은 어때요?' : h < 17 ? '점심은 맛있게 먹었어요? 오후도 같이 힘내요!' : '오늘 하루 어땠어요? 기분을 남겨 두면 나중에 캘린더에서 볼 수 있어요.'; };
 
+  // ==================================================================
+  //  🐾 펫 성장: 기록할수록 경험치(XP) → 레벨. 목표를 넉넉히 채운 날마다 🍖 간식 하나
+  // ==================================================================
+  function growth(id) {
+    const { trackers, byT } = ctx.logs.data(), ts = trackers.filter(t => t.owner === id && !t.archived), today = dayKey();
+    const days = new Map();
+    for (const t of ts) for (const l of (byT.get(t.id) || new Map()).values()) {
+      if (!(l.amount > 0) || l.day > today) continue;
+      const d = days.get(l.day) || { done: 0, met: 0 }, g = goalOf(t);
+      d.done++; if (!g || l.amount >= g) d.met++;
+      days.set(l.day, d);
+    }
+    const perfect = Math.max(1, Math.ceil(ts.length * 2 / 3));
+    let xp = 0, treats = 0;
+    for (const d of days.values()) { xp += d.done * 10 + d.met * 5; if (d.met >= perfect) treats++; }
+    if (id === me.id && ctx.achCount) xp += ctx.achCount() * 30;
+    let level = 1, need = 100, rest = xp;
+    while (rest >= need) { rest -= need; level++; need = 100 + (level - 1) * 50; }
+    const td = days.get(today), yd = days.get(addDays(today, -1)), dd = days.get(addDays(today, -2)), h = new Date().getHours();
+    const mood = !ts.length ? ['👋', '만나서 반가워요! 습관을 하나 만들어 볼까요?']
+      : td && td.met >= ts.length ? ['🤩', '신났어요! 오늘 목표를 다 채웠어요']
+      : td && td.met >= perfect ? ['😋', '간식 받을 만큼 했어요!']
+      : td ? ['😊', '기분 좋아요. 조금만 더 해 볼까요?']
+      : !yd && dd ? ['🥺', '어제 기록이 없어서 조금 시무룩해요…']
+      : h >= 18 ? ['🥱', '심심해요… 하나만 같이 해요'] : ['🐾', '오늘도 같이 해요!'];
+    const fed = (petState[id] && petState[id].fed) || 0;
+    return { level, xp, into: rest, need, treats, fed, left: Math.max(0, treats - fed), mood, todayPerfect: !!(td && td.met >= perfect) };
+  }
+  const levelOf = id => growth(id).level;
+
   function renderSlot() {
     watchNotes();
     const el = $('lgPetSlot'); if (!el) return;
-    const p = petInfo(me), m = moodFor(me.id), note = notes[notes.length - 1];
+    const p = petInfo(me), m = moodFor(me.id), note = notes[notes.length - 1], g = growth(me.id), today = dayKey();
+    const myCheers = cheers.filter(c => c.to === me.id && c.day === today).slice(-3);
+    const dl = dailyLine(today);
     const showLunch = new Date().getHours() >= 11 || (m && m.lunch);
     el.innerHTML = `<section class="pet-card">
       <div class="pet-top">${p.img ? `<img class="pet-img" alt="" src="${p.img}">` : '<span class="pet-img">🐾</span>'}
         <div class="pet-who"><b>${esc(p.name)}</b><small>${note ? `${esc(SLOT[note.slot.replace('-test', '')]?.[0] || '')} · ${new Date(note.at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}` : '펫 비서'}</small></div>
         <button class="pet-set" data-pet="settings" type="button" aria-label="펫 비서 설정">⚙︎ 설정</button></div>
+      <div class="pet-grow"><span class="pet-lv">Lv.${g.level}</span><div class="pet-xp" title="다음 레벨까지 ${g.need - g.into} XP"><i style="width:${Math.round(g.into / g.need * 100)}%"></i></div><small>${g.into}/${g.need} XP</small>
+        <button class="pet-feed${g.left ? '' : ' empty'}" data-pet="feed" type="button" ${g.left ? '' : 'disabled'} title="${g.left ? '간식 주기' : '목표를 넉넉히 채운 날마다 간식이 하나씩 생겨요'}">🍖 간식 ${g.left}</button></div>
+      <div class="pet-feel">${g.mood[0]} ${esc(g.mood[1])}</div>
       <p class="pet-say">${esc(note ? note.text : greet())}</p>
+      ${myCheers.length ? `<div class="pet-cheers">${myCheers.map(c => `<span>${esc(c.emoji || '👏')} ${esc(ctx.nameOf(c.from))}님이 응원했어요${c.label ? ` · ${esc(c.label)}` : ''}</span>`).join('')}</div>` : ''}
       <button class="pet-chat-btn" data-pet="chat" type="button"><span>✦</span> ${esc(p.name)}에게 말 걸기 <small>"운동 30분 했어", "오늘 뭐부터 할까?"</small></button>
       <div class="pet-q">오늘 기분은?</div>
       <div class="mood-row" role="radiogroup" aria-label="오늘 기분">${MOODS.slice(1).map((x, i) => `<button type="button" role="radio" aria-checked="${m && m.score === i + 1}" data-mood="${i + 1}"><span>${x[0]}</span><small>${x[1]}</small></button>`).join('')}</div>
       ${m && m.score ? `<form class="pet-form" data-form="note"><input name="v" maxlength="200" placeholder="한마디 남기기 (선택)" value="${esc(m.note || '')}" aria-label="오늘 한마디"><button type="submit">저장</button></form>` : ''}
       ${showLunch ? `<form class="pet-form" data-form="lunch"><span>🍱</span><input name="v" maxlength="100" placeholder="점심 뭐 먹었어요?" value="${esc((m && m.lunch) || '')}" aria-label="오늘 점심"><button type="submit">저장</button></form>` : ''}
+    </section>
+    <section class="daily-card"><div class="lg-kicker">오늘의 ${dl.kind === 'quiz' ? '퀴즈' : '한 줄'}</div>
+      ${dl.kind === 'quiz' ? `<p class="daily-q">${esc(dl.q)}</p><button type="button" class="daily-a${quizOpen ? ' open' : ''}" data-pet="quiz">${quizOpen ? esc(dl.a) : '정답 보기'}</button>`
+        : `<p class="daily-q">“${esc(dl.text)}”</p><small class="daily-by">— ${esc(dl.by)}</small>`}
     </section>`;
+    if (fedAnim && Date.now() - fedAnim < 1500) el.querySelector('.pet-img')?.classList.add('fed');
   }
   const save = (patch, msg) => work.saveMood(dayKey(), { ...patch, shared: settings ? !!settings.shareMood : true })
     .then(() => msg && toast(msg)).catch(e => toast('저장하지 못했어요 (' + (e.code || e.message) + ')'));
 
   document.addEventListener('click', e => {
+    const ch = e.target.closest('#paneToday [data-cheer]');
+    if (ch) return sendCheer(ch.dataset.to, ch.dataset.cheer, ch.dataset.label);
     const b = e.target.closest('#lgPetSlot [data-mood], #lgPetSlot [data-pet]'); if (!b) return;
     if (b.dataset.pet === 'settings') return openSettings();
+    if (b.dataset.pet === 'feed') return feed();
+    if (b.dataset.pet === 'quiz') { quizOpen = !quizOpen; return renderSlot(); }
     if (b.dataset.pet === 'chat') return openChat();
     const s = +b.dataset.mood;
     save({ score: s }, `${MOODS[s][0]} 오늘 기분을 남겼어요`).then(() => setTimeout(() => $('lgPetSlot')?.querySelector('[data-form=note] input')?.focus(), 50));
@@ -58,6 +106,28 @@ export function initPet(ctx) {
     if (f.dataset.form === 'note') save({ note: v.slice(0, 200) }, '✎ 한마디를 남겼어요');
     else save({ lunch: v.slice(0, 100) }, v ? `🍱 ${v} 기록했어요` : '');
   });
+
+  async function feed() {
+    const g = growth(me.id); if (!g.left) return;
+    fedAnim = Date.now();
+    try {
+      await work.feedPet(g.fed + 1, dayKey());
+      ctx.onFeed && ctx.onFeed();
+      const p = petInfo(me);
+      toast(['🍖 냠냠! ', '🦴 와구와구! ', '🥕 오물오물! '][g.fed % 3] + `${p.name}가 좋아해요 💕`);
+    } catch (err) { toast('간식을 주지 못했어요 (' + (err.code || err.message) + ')'); }
+  }
+  // 👏 응원: 상대 습관 옆 버튼. 같은 습관은 하루 한 번
+  const cheered = (to, tid) => cheers.some(c => c.from === me.id && c.to === to && c.tracker === tid && c.day === dayKey());
+  async function sendCheer(to, tid, label) {
+    if (!to || cheered(to, tid)) return;
+    const emoji = ['👏', '🙌', '🔥', '💪', '✨'][Math.floor(Math.random() * 5)];
+    try {
+      await work.sendCheer({ to, tracker: tid || '', label: label || '', emoji, day: dayKey() });
+      ctx.notify && ctx.notify([to], 'cheer', `${emoji} ${me.name}님의 응원`, `${label ? label + ' ' : ''}응원해요! 오늘도 같이 해요`, 'cheer-' + tid, './#today');
+      toast(`${emoji} ${ctx.nameOf(to)}님께 응원을 보냈어요`);
+    } catch (err) { toast('응원을 보내지 못했어요 (' + (err.code || err.message) + ')'); }
+  }
 
   // ---------- 설정 ----------
   let dlg = null;
@@ -79,9 +149,12 @@ export function initPet(ctx) {
       <label class="lg-check"><input type="checkbox" name="shareMood" ${s.shareMood ? 'checked' : ''}> 내 기분·점심을 상대에게 보여주기</label>
       <div class="pet-try"><select name="trySlot" aria-label="받아 볼 알림">${Object.entries(SLOT).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}</select><button class="lg-btn" type="button" data-try="1">지금 받아 보기</button></div>
       <p class="pet-out" id="petOut" hidden></p>
+      <p class="pet-conn" id="petConn">서버 연결 확인 중…</p>
       <div class="lg-drow"><button class="lg-btn ghost" type="button" data-close>닫기</button><button class="lg-btn primary" type="submit">저장</button></div>
     </form>`;
     dlg.showModal();
+    ctx.petApi({ action: 'status' }).then(r => { const el = $('petConn'); if (el) el.innerHTML = r.connected ? '🟢 정해진 시간 알림 <b>켜짐</b> · 이 계정 로그인으로 서버가 대신 읽어요' : '⚪ 정해진 시간 알림 <b>꺼짐</b> · 저장을 누르면 켜져요'; })
+      .catch(() => { const el = $('petConn'); if (el) el.textContent = ''; });
   }
   function read() {
     const f = new FormData(dlg.querySelector('form')), o = {};
@@ -93,7 +166,14 @@ export function initPet(ctx) {
   async function onSave(e) {
     e.preventDefault();
     const o = read();
-    try { await work.saveAssistant(o); settings = { ...settings, ...o }; dlg.close(); toast('🐾 펫 비서 설정을 저장했어요'); }
+    try {
+      await work.saveAssistant(o); settings = { ...settings, ...o };
+      // 하나라도 켜져 있으면 서버에 내 로그인을 맡겨 정해진 시간에 보낼 수 있게, 다 끄면 지운다
+      const any = Object.keys(SLOT).some(k => o[k + 'On']);
+      const r = await ctx.petApi(any ? { action: 'enable', refreshToken: ctx.refreshToken() } : { action: 'disable' }).catch(e => ({ error: e.message }));
+      dlg.close();
+      toast(r.error ? `저장했지만 서버 연결은 실패했어요: ${r.error}` : any ? '🐾 저장했어요. 정한 시간에 펫이 말을 걸어요' : '🐾 저장했어요. 정해진 시간 알림은 꺼졌어요');
+    }
     catch (err) { toast('저장하지 못했어요 (' + (err.code || err.message) + ')'); }
   }
   async function tryNow() {
@@ -208,12 +288,90 @@ export function initPet(ctx) {
     sending = false; saveChat(chat); renderChat();
   }
 
+  // ==================================================================
+  //  📮 편지함 + 🔮 내 패턴 찾기 (성취 탭)
+  // ==================================================================
+  const INS_KEY = 'unframe-insight-' + me.id;
+  const loadIns = () => { try { return JSON.parse(localStorage.getItem(INS_KEY)); } catch { return null; } };
+  let insBusy = false, openLetter = null;
+  function renderAchExtra() {
+    const el = $('lgAchExtra'); if (!el) return;
+    const ins = loadIns();
+    const ls = [...letters].sort((a, b) => (b.week + b.member < a.week + a.member ? -1 : 1)).slice(0, 12);
+    el.innerHTML = `
+      <section class="lg-sec dark" id="lgInsights">
+        <div class="lg-kicker">내 패턴 찾기</div>
+        <p class="lg-lede">최근 90일 기록과 기분을 AI가 살펴보고 숨은 패턴을 찾아요.</p>
+        ${ins && ins.items ? `<ul class="ins-list">${ins.items.map(x => `<li><span class="ins-e">${esc(x.emoji || '🔮')}</span><div><b>${esc(x.title)}</b><p>${esc(x.detail)}</p></div></li>`).join('')}</ul><small class="ins-when">${new Date(ins.at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}에 찾았어요</small>` : ''}
+        <button class="lg-btn primary" data-ins="1" type="button" ${insBusy ? 'disabled' : ''}>${insBusy ? '🔮 살펴보는 중…' : ins ? '🔮 다시 찾기' : '🔮 내 패턴 찾기'}</button>
+      </section>
+      <section class="lg-sec light tight" id="lgLetters">
+        <div class="lg-kicker">편지함</div>
+        <p class="lg-lede">매주 일요일 저녁, 펫이 한 주를 돌아보는 편지를 써요. 둘의 편지를 같이 볼 수 있어요.</p>
+        ${ls.length ? `<ul class="letter-list">${ls.map(l => `<li class="${l.member === me.id ? 'mine' : 'theirs'}${openLetter === l.id ? ' open' : ''}"><button type="button" data-letter="${esc(l.id)}">
+          <span class="letter-top"><b>📮 ${esc(l.pet || '펫')}</b><small>${esc(ctx.nameOf(l.member))}님께 · ${esc(fmtWeek(l.week))}</small></span>
+          <span class="letter-text">${esc(l.text)}</span></button></li>`).join('')}</ul>` : '<p class="lg-lede">아직 편지가 없어요. 이번 일요일 저녁을 기다려 주세요 🐾</p>'}
+        <button class="lg-btn" data-letternow="1" type="button">이번 주 편지 지금 받아 보기</button>
+      </section>`;
+  }
+  const fmtWeek = w => { const d = parseDay(w), e = parseDay(addDays(w, 6)); return `${d.getMonth() + 1}/${d.getDate()}~${e.getMonth() + 1}/${e.getDate()}`; };
+  /** 패턴 찾기에 보낼 사실들: 요일별 기록률, 최근 30일 vs 이전 30일, 기분과 습관 */
+  function facts() {
+    const today = dayKey(), { trackers, byT } = ctx.logs.data(), WD = ['일', '월', '화', '수', '목', '금', '토'];
+    const days = [...Array(90)].map((_, i) => addDays(today, -89 + i));
+    const myMoods = new Map(moods.filter(m => m.owner === me.id && m.score).map(m => [m.day, m.score]));
+    const habits = trackers.filter(t => t.owner === me.id && !t.archived).map(t => {
+      const d = byT.get(t.id) || new Map(), amt = k => (d.get(k) ? d.get(k).amount : 0);
+      const byWd = Array(7).fill(0).map(() => [0, 0]);
+      days.forEach(k => { const w = parseDay(k).getDay(); byWd[w][1]++; if (amt(k) > 0) byWd[w][0]++; });
+      const rate = byWd.map(([a, b], w) => ({ wd: WD[w], pct: b ? Math.round(a / b * 100) : 0 }));
+      const sum = (from, to) => days.slice(from, to).reduce((a, k) => a + amt(k), 0);
+      const on = [], off = [];
+      days.forEach(k => { if (myMoods.has(k)) (amt(k) > 0 ? on : off).push(myMoods.get(k)); });
+      const avg = a => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null);
+      const st = statsFor(t, d, today);
+      return { name: `${t.emoji || ''} ${t.name}`.trim(), unit: t.unit === 'minutes' ? '분' : t.unit === 'check' ? '회' : (t.unitLabel || '개'), daysDone90: days.filter(k => amt(k) > 0).length,
+        weekdayRate: rate, last30: sum(60, 90), prev30: sum(30, 60), streak: st.streak, best: st.best,
+        moodWhenDone: avg(on), moodWhenNot: avg(off), moodSamples: [on.length, off.length] };
+    });
+    const moodByWd = Array(7).fill(0).map(() => []);
+    for (const [k, v] of myMoods) if (k >= days[0]) moodByWd[parseDay(k).getDay()].push(v);
+    return { today, habits, moodDays: [...myMoods.keys()].filter(k => k >= days[0]).length,
+      moodByWeekday: moodByWd.map((a, w) => ({ wd: WD[w], avg: a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null, n: a.length })) };
+  }
+  async function findPatterns() {
+    insBusy = true; renderAchExtra();
+    try {
+      const r = await petChat({ mode: 'insight', facts: facts(), pet: { name: petInfo(me).name, ko: petInfo(me).ko } });
+      if (!r.insights || !r.insights.length) throw new Error('찾은 패턴이 없어요. 기록이 더 쌓이면 다시 해 봐요');
+      try { localStorage.setItem(INS_KEY, JSON.stringify({ at: Date.now(), items: r.insights.slice(0, 5) })); } catch {}
+    } catch (err) { toast('패턴을 찾지 못했어요: ' + err.message); }
+    insBusy = false; renderAchExtra();
+  }
+  document.addEventListener('click', async e => {
+    if (e.target.closest('#lgAchExtra [data-ins]')) return findPatterns();
+    const lt = e.target.closest('#lgAchExtra [data-letter]');
+    if (lt) { openLetter = openLetter === lt.dataset.letter ? null : lt.dataset.letter; return renderAchExtra(); }
+    const ln = e.target.closest('#lgAchExtra [data-letternow]');
+    if (ln) {
+      ln.disabled = true; ln.textContent = '📮 펫이 편지 쓰는 중…';
+      try { const r = await petNow('letter'); if (r.text) { toast('📮 편지가 왔어요'); if (r.demo) { letters.push({ id: 'demo-' + Date.now(), member: me.id, week: addDays(dayKey(), -((parseDay(dayKey()).getDay() + 6) % 7)), pet: petInfo(me).name, text: r.text, at: Date.now() }); } } }
+      catch (err) { toast('편지를 받지 못했어요: ' + err.message); }
+      renderAchExtra();
+    }
+  });
+
   // 구독은 맨 끝에서 시작 (데모 저장소는 바로 콜백을 불러서, 위의 함수들이 먼저 준비돼 있어야 한다)
   work.getAssistant().then(a => { settings = { ...DEFAULTS, ...(a || {}) }; }).catch(() => { settings = { ...DEFAULTS }; });
   work.onMoods(list => { moods = list; renderSlot(); ctx.changed && ctx.changed(); }, () => {});
   watchNotes();
+  work.onLetters(list => { letters = list; renderAchExtra(); });
+  work.onCheers(list => { cheers = list; renderSlot(); ctx.changed && ctx.changed(); });
+  work.onPetState(st => { petState = st; renderSlot(); ctx.onLevels && ctx.onLevels(); });
 
   return {
+    levelOf, growth, cheered, renderAchExtra,
+    openLetters() { setTimeout(() => $('lgLetters')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250); },
     renderSlot, moodFor, openSettings, openChat,
     moods: () => moods,
     focus(kind) {
