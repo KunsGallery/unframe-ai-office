@@ -1,6 +1,6 @@
 // Unframe Log 서비스 워커: 앱 설치 + 웹 푸시 알림. 그림 파일만 캐시하고, 나머지는 항상 최신 버전을 받아온다.
 const CACHE = 'office-assets-v2';
-const VERSION = 'push-2';
+const VERSION = 'push-3';
 // 앱이 진단 화면에서 서비스 워커 버전을 물어본다
 self.addEventListener('message', e => { if (e.data && e.data.type === 'version' && e.ports[0]) e.ports[0].postMessage({ version: VERSION }); });
 self.addEventListener('install', () => self.skipWaiting());
@@ -25,10 +25,12 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(d.title || 'Unframe Log', {
+  const title = d.title || 'Unframe Log';
+  // 일부 브라우저(삼성 인터넷 등)가 옵션을 거절하면 가장 단순한 알림으로 다시 띄운다
+  e.waitUntil(self.registration.showNotification(title, {
     body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag,
     icon: 'icons/icon-192.png', data: { url: d.url || './' },
-  }));
+  }).catch(() => self.registration.showNotification(title, { body: d.body || '', data: { url: d.url || './' } })));
 });
 // 알림을 누르면: 열린 앱이 있으면 그 창으로, 없으면 새로 연다
 self.addEventListener('notificationclick', e => {

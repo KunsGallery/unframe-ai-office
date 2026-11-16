@@ -693,6 +693,17 @@ $('notiKinds').addEventListener('change', e => {
 $('notiTest').onclick = () => store.sendPush({ to: [me.id], kind: 'test', title: '🔔 Unframe Log 테스트', body: '알림이 잘 와요! 이 기기에서 받을 수 있어요.', tag: 'test', url: './#today' })
   .then(r => { lastTest = r.sent ? `보냄 · 기기 ${r.sent}대에 전달 (${new Date().toLocaleTimeString('ko-KR')}). 몇 초 안에 안 뜨면 휴대폰 알림 설정 문제예요` : `보낼 기기가 없어요 (등록 ${r.devices || 0}대${r.removed ? `, 끊긴 구독 ${r.removed}개 정리` : ''}). 스위치를 껐다 다시 켜 주세요`; toast(r.sent ? `🔔 테스트 알림을 보냈어요 (기기 ${r.sent}대)` : '보낼 기기가 없어요. 알림을 껐다 다시 켜 보세요.'); renderDiag(); })
   .catch(e => { lastTest = '실패: ' + e.message; toast('테스트 알림 실패: ' + e.message); renderDiag(); });
+// 서버를 거치지 않고 이 기기에서 바로 띄워 보기 → 뜨면 화면 표시는 정상, 안 뜨면 휴대폰/브라우저 쪽 알림 표시가 막힌 것
+$('notiLocal').onclick = async () => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') throw new Error('알림 권한이 없어요');
+    const r = await navigator.serviceWorker.getRegistration();
+    if (!r) throw new Error('서비스 워커가 없어요');
+    await r.showNotification('🔔 이 기기에서 바로 띄운 알림', { body: '이게 보이면 화면에 알림을 띄우는 건 정상이에요.', tag: 'local-test' });
+    lastTest = '이 기기에서 바로 띄우기: 보냄 (보이면 표시는 정상 → 푸시 전달 문제)';
+  } catch (e) { lastTest = '이 기기에서 바로 띄우기 실패: ' + e.message; }
+  renderDiag();
+};
 refreshNotify();
 // 알림을 누르고 들어왔을 때: 해당 탭으로
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
