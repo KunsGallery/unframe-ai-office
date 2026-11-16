@@ -8,6 +8,7 @@ import { firebaseLogStore, demoLogStore } from './log/store.js';
 import { firebaseWorkStore, demoWorkStore } from './log/workstore.js';
 import { initDocs } from './log/docs.js';
 import { initCalendar } from './log/calendar.js';
+import { initPet, moodEmoji } from './log/pet.js';
 import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, deviceName } from './push.js';
 
 const $ = id => document.getElementById(id);
@@ -87,6 +88,14 @@ async function firebaseStore() {
     savePushSub: (id, d) => F.setDoc(F.doc(db, 'pushSubs', id), { ...d, owner: me.id, updatedAt: F.serverTimestamp() }),
     deletePushSub: id => F.deleteDoc(F.doc(db, 'pushSubs', id)),
     myPushSubs: async () => (await F.getDocs(F.query(F.collection(db, 'pushSubs'), F.where('owner', '==', me.id)))).docs.map(d => ({ id: d.id, device: d.data().device, host: (() => { try { return new URL(d.data().endpoint).host; } catch { return '?'; } })(), kinds: d.data().kinds || [] })),
+    petNow: async slot => {
+      const res = await fetch('/.netlify/functions/pet-now', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify({ slot }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+      return j;
+    },
     sendPush: async p => {
       const res = await fetch('/.netlify/functions/push', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
@@ -238,6 +247,12 @@ function demoStore() {
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
     savePushSub: async () => {}, deletePushSub: async () => {}, myPushSubs: async () => [],
+    petNow: async slot => {
+      await new Promise(r => setTimeout(r, 900));
+      const text = { brief: '좋은 아침이에요 멍! ☀️ 오늘 기분은 어때요? 서울 맑음, 2~12°C. 오후 2시 운영 회의가 있어요.', lunch: '점심은 뭐 먹었어요 멍? 🍱 오후도 같이 힘내요!', due: '마감 지난 할 일이 1개 있어요: 오후 3시 배포. 같이 챙겨요 🐾', evening: '오늘 📖 독서 아직이에요! 🔥29일 연속, 오늘도 이어가요 멍.' }[slot];
+      localNotify('🐕 ' + (profiles[me.id]?.petName || me.name + '의 보더콜리'), text, 'pet-' + slot, './#today');
+      return { sent: 1, text, demo: true };
+    },
     sendPush: async p => { if (p.kind === 'test') localNotify(p.title, p.body, p.tag, p.url); return { sent: p.kind === 'test' ? 1 : 0, demo: true }; },
     workStore: () => demoWorkStore(me.id, other !== MEMBERS[0] ? other.id : null),
     heartbeat: async (status, pos) => {
@@ -1053,6 +1068,7 @@ $('lookDlg').addEventListener('click', e => {
 $('lookName').addEventListener('input', () => { draft.claudeName = $('lookName').value; renderLook(); });
 $('petName').addEventListener('input', () => { draft.petName = $('petName').value; });
 $('lookBtn').onclick = openLook;
+$('petBtn').onclick = () => { $('tools').hidden = true; petUi && petUi.openSettings(); };
 $('lookCancel').onclick = () => $('lookDlg').close();
 $('lookForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -1296,8 +1312,10 @@ $('iosClose').onclick = () => $('iosDlg').close();
 // ======================================================================
 const TABS = ['today', 'calendar', 'docs', 'log', 'achieve', 'together', 'office'];
 const PANE = { today: 'paneToday', calendar: 'paneCalendar', docs: 'paneDocs', log: 'paneLog', achieve: 'paneAchieve', together: 'paneTogether', office: 'paneOffice' };
-let currentTab = 'today', logUi = null, docsUi = null, calUi = null;
+let currentTab = 'today', logUi = null, docsUi = null, calUi = null, petUi = null;
 function showTab(tab, { push = true } = {}) {
+  // 펫 알림을 누르고 들어오면: #mood → 오늘 기분, #lunch → 점심
+  if (tab === 'mood' || tab === 'lunch') { const k = tab; setTimeout(() => petUi && petUi.focus(k), 200); tab = 'today'; push = true; }
   if (!TABS.includes(tab)) tab = 'today';
   const changedTab = tab !== currentTab;
   currentTab = tab;
@@ -1327,9 +1345,12 @@ function startLog() {
   // 업적 축하를 한 번만 보이려고 본 업적 id를 profiles에 남긴다 (생김새 값도 같이 써야 규칙을 통과)
   const saveSeen = ids => { const l = look(me); return store.saveProfile({ char: l.char, hue: l.hue, claudeChar: l.claudeChar, claudeHue: l.claudeHue, claudeName: l.claudeName, pet: l.pet, petName: l.petName, seenAchievements: ids.slice(-400) }); };
   const logStore = store.logStore(), work = store.workStore();
-  logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab });
+  const petHooks = { moodOf: (id, d) => (petUi ? petUi.moodFor(id, d) : null), moodEmoji, moods: () => (petUi ? petUi.moods() : []) };
+  logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab, ...petHooks, afterToday: () => petUi && petUi.renderSlot() });
+  petUi = initPet({ work, me, toast, petNow: slot => store.petNow(slot), changed: () => { if (currentTab === 'today') logUi.show('today'); calUi && calUi.refresh(); },
+    petInfo: m => { const l = look(m); return { kind: l.pet, name: PET_KO[l.pet] ? petNameOf(m, l) : `${m.name}의 비서`, img: PET_KO[l.pet] ? office.petPreview(l.pet) : '' }; } });
   docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
-  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems,
+  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems, ...petHooks,
     notifyOthers: (title, body, tag) => pushTo(MEMBERS.filter(m => m.id !== me.id).map(m => m.id), 'event', title, body, tag, './#calendar') });
   showTab(location.hash.slice(1) || 'today', { push: false });
 }

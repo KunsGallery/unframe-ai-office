@@ -233,6 +233,39 @@ service cloud.firestore {
       allow delete: if isMember();
     }
 
+    // 🐾 펫 비서 설정 (본인만). 정해진 시간에 서버(서비스 계정)가 읽어서 알림을 보낸다
+    match /assistant/{mid} {
+      function okTime(t) { return t is string && t.matches('[0-2][0-9]:[0-5][0-9]'); }
+      allow read: if isMember() && mid == myId();
+      allow write: if isMember() && mid == myId()
+        && request.resource.data.keys().hasOnly(['briefOn', 'briefTime', 'lunchOn', 'lunchTime', 'dueOn', 'dueTime', 'eveningOn', 'eveningTime', 'weekend', 'city', 'style', 'shareMood', 'updatedAt'])
+        && request.resource.data.briefOn is bool && request.resource.data.lunchOn is bool && request.resource.data.dueOn is bool && request.resource.data.eveningOn is bool
+        && okTime(request.resource.data.briefTime) && okTime(request.resource.data.lunchTime) && okTime(request.resource.data.dueTime) && okTime(request.resource.data.eveningTime)
+        && request.resource.data.weekend is bool && request.resource.data.shareMood is bool
+        && request.resource.data.city is string && request.resource.data.city.size() <= 20
+        && request.resource.data.style is string && request.resource.data.style.size() <= 200
+        && request.resource.data.updatedAt == request.time;
+    }
+    // 🐾 펫이 보낸 말 (서버만 씀, 본인만 읽음)
+    match /petNotes/{nid} {
+      allow read: if isMember() && resource.data.member == myId();
+      allow write: if false;
+    }
+    // 😊 하루 기분·점심 ('멤버id__날짜'). 쓰기는 본인, 읽기는 본인 또는 공유
+    match /moods/{mid} {
+      allow read: if isMember() && (resource.data.owner == myId() || resource.data.shared == true);
+      allow write: if isMember()
+        && mid == myId() + '__' + request.resource.data.day
+        && request.resource.data.keys().hasOnly(['owner', 'day', 'score', 'note', 'lunch', 'shared', 'updatedAt'])
+        && request.resource.data.owner == myId()
+        && request.resource.data.day is string && request.resource.data.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && (!('score' in request.resource.data) || (request.resource.data.score is int && request.resource.data.score >= 0 && request.resource.data.score <= 5))
+        && (!('note' in request.resource.data) || (request.resource.data.note is string && request.resource.data.note.size() <= 200))
+        && (!('lunch' in request.resource.data) || (request.resource.data.lunch is string && request.resource.data.lunch.size() <= 100))
+        && request.resource.data.shared is bool
+        && request.resource.data.updatedAt == request.time;
+    }
+
     // 📝 회의 메모 (날짜마다 한 문서, 멤버 누구나 고침)
     match /notes/{day} {
       allow read: if isMember();

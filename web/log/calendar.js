@@ -30,7 +30,7 @@ export function initCalendar(ctx) {
       const evs = evOn(d), dots = mineT.filter(t => (byT.get(t.id)?.get(d)?.amount || 0) > 0);
       const dueN = due.filter(b => b.due === d).length;
       cells.push(`<button type="button" class="cal-d${inMonth ? '' : ' out'}${d === today ? ' today' : ''}${d === sel ? ' sel' : ''}${new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8)).getDay() === 0 ? ' sun' : ''}" data-day="${d}" aria-label="${fmtDate(d)}${evs.length ? ` 일정 ${evs.length}개` : ''}">
-        <span class="cal-n">${+d.slice(8)}</span>
+        <span class="cal-n">${+d.slice(8)}</span>${ctx.moodOf && ctx.moodOf(me.id, d)?.score ? `<span class="cal-mood">${ctx.moodEmoji(ctx.moodOf(me.id, d).score)}</span>` : ''}
         <span class="cal-evs">${evs.slice(0, 3).map(e => `<i class="${ownerCls(e.owner)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.title)}</i>`).join('')}${evs.length > 3 ? `<i class="more">+${evs.length - 3}</i>` : ''}${dueN ? `<i class="due">⚑ 마감 ${dueN}</i>` : ''}</span>
         <span class="cal-dots">${dots.map(t => `<i style="background:${esc(t.color)}"></i>`).join('')}</span>
       </button>`);
@@ -57,6 +57,7 @@ export function initCalendar(ctx) {
     return `<div class="lg-kicker">${d === today ? '오늘' : d < today ? '지난 날' : '다가올 날'}</div>
       <h2 class="cal-dt"><span class="lg-n">${+d.slice(8)}</span> ${fmtDate(d).replace(/^\d+월 \d+일 /, `${+d.slice(5, 7)}월 · `)}</h2>
 
+      ${moodHtml(d)}
       <h3 class="cal-h">일정 <button class="lg-btn ghost sm" data-act="addev" type="button">+ 일정</button></h3>
       <ul class="cal-list">${evs.map(x => `<li class="${ownerCls(x.owner)}"><button type="button" data-ev="${x.id}">
         <span class="cal-time">${esc(x.time || '하루 종일')}</span><b>${esc(x.title)}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}
@@ -85,6 +86,12 @@ export function initCalendar(ctx) {
       <button class="lg-btn" data-act="memo" data-title="${esc(memoTitle)}" type="button">✎ ${esc(memoTitle)} ${docs.pages().some(p => p.owner === me.id && p.title === memoTitle) ? '열기' : '쓰기'}</button>`;
   }
 
+  function moodHtml(d) {
+    if (!ctx.moodOf) return '';
+    const rows = members.map(mm => ({ mm, x: ctx.moodOf(mm.id, d) })).filter(r => r.x && (r.x.score || r.x.lunch || r.x.note));
+    if (!rows.length) return '';
+    return `<h3 class="cal-h">기분</h3><ul class="cal-moods">${rows.map(({ mm, x }) => `<li><b>${x.score ? ctx.moodEmoji(x.score) : '·'}</b><span>${esc(mm.id === me.id ? '나' : mm.name)}${x.note ? ` “${esc(x.note)}”` : ''}${x.lunch ? `<small>🍱 ${esc(x.lunch)}</small>` : ''}</span></li>`).join('')}</ul>`;
+  }
   pane.addEventListener('click', e => {
     const day = e.target.closest('[data-day]');
     if (day) {

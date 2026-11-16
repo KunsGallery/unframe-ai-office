@@ -39,8 +39,16 @@ function paceLine(sum) {
   return { r, a: `${num(sum.passed)}일 중 ${num(r.days)}일`, b: '→ 1년이면', eq: num(y), unit: '일', then: `× 10년 = ${num(y * 10)}일`, note: '10년이면' };
 }
 
-export function openReport(period, { trackers, byT, earned, toast }) {
-  const sum = summarize(period, trackers, byT), pace = paceLine(sum);
+const MOOD_E = ['', '😫', '😕', '😐', '🙂', '😄'];
+function moodLine(sum, moods) {
+  const inP = (moods || []).filter(m => m.score && sum.keys.includes(m.day));
+  if (!inP.length) return null;
+  const cnt = [0, 0, 0, 0, 0, 0]; inP.forEach(m => cnt[m.score]++);
+  const top = cnt.indexOf(Math.max(...cnt.slice(1)));
+  return { days: inP.length, top: MOOD_E[top], topN: cnt[top], avg: inP.reduce((a, m) => a + m.score, 0) / inP.length, strip: inP.sort((a, b) => (a.day < b.day ? -1 : 1)).map(m => MOOD_E[m.score]).join('') };
+}
+export function openReport(period, { trackers, byT, earned, toast, moods }) {
+  const sum = summarize(period, trackers, byT), pace = paceLine(sum), mood = moodLine(sum, moods);
   let el = document.getElementById('lgReport');
   if (!el) { el = document.createElement('div'); el.id = 'lgReport'; el.className = 'lg-report'; document.body.appendChild(el); }
   const dots = sum.keys.map(k => `<i class="${sum.active.has(k) ? 'on' : k > dayKey() ? 'fut' : ''}"></i>`).join('');
@@ -51,6 +59,7 @@ export function openReport(period, { trackers, byT, earned, toast }) {
       <h1 class="lg-display xl"><span class="lg-n">${num(sum.active.size)}</span><span class="lg-u">일</span></h1>
       <p class="lg-lede">${esc(sum.label)}, ${period.kind === 'month' ? `${sum.keys.length}일` : `${sum.keys.length}일`} 가운데 무언가를 기록한 날.</p>
       <div class="lg-rdots ${period.kind}">${dots}</div>
+      ${mood ? `<p class="lg-lede lg-rmood">기분을 남긴 날 <b>${num(mood.days)}일</b> · 가장 많았던 기분 <b>${mood.top} ${num(mood.topN)}일</b><span>${period.kind === 'month' ? mood.strip : ''}</span></p>` : ''}
       <p class="lg-scroll">아래로 ↓</p>
     </section>
     <section class="lg-story blue">
@@ -72,7 +81,7 @@ export function openReport(period, { trackers, byT, earned, toast }) {
     if (b.dataset.r === 'close') close();
     if (b.dataset.r === 'save') {
       b.disabled = true;
-      try { await saveImage(sum, pace, earned, period); } catch (err) { toast('이미지를 만들지 못했어요: ' + err.message); }
+      try { await saveImage(sum, pace, earned, period, mood); } catch (err) { toast('이미지를 만들지 못했어요: ' + err.message); }
       b.disabled = false;
     }
   };
@@ -83,7 +92,7 @@ export function openReport(period, { trackers, byT, earned, toast }) {
 // ---------- 이미지 (1080 × 1920, 세 가지 톤) ----------
 const DISPLAY = '"Oswald", "Pretendard Variable", Pretendard, sans-serif';
 const BODY = '"Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", sans-serif';
-async function saveImage(sum, pace, earned, period) {
+async function saveImage(sum, pace, earned, period, mood) {
   const texts = [sum.label, ...sum.rows.map(r => r.t.name + r.parts.unit), pace ? pace.a + pace.then + pace.note : '', '가운데 무언가를 기록한 날 무엇을 쌓았나 이 속도면 업적 일 연속 최장'].join(' ');
   await Promise.all([document.fonts.load(`600 200px Oswald`, '0123456789,.'), document.fonts.load(`700 40px "Pretendard Variable"`, texts)]).catch(() => {});
   const W = 1080, H = 1920, c = document.createElement('canvas');
@@ -97,7 +106,7 @@ async function saveImage(sum, pace, earned, period) {
   text(`UNFRAME LOG · ${sum.label}`, P, 120, `600 34px ${BODY}`, '#1f3fbf');
   const w1 = text(num(sum.active.size), P - 6, 380, `600 260px ${DISPLAY}`, '#111');
   text('일', P + w1 + 10, 380, `700 64px ${BODY}`, '#111');
-  text(`${sum.keys.length}일 가운데 무언가를 기록한 날`, P, 450, `500 36px ${BODY}`, '#555');
+  text(`${sum.keys.length}일 가운데 무언가를 기록한 날${mood ? ` · 가장 많았던 기분 ${mood.top}` : ''}`, P, 450, `500 36px ${BODY}`, '#555');
   // 점
   const n = sum.keys.length, cols = period.kind === 'month' ? 16 : 31, gap = (W - P * 2) / cols, r = period.kind === 'month' ? 14 : 6.5;
   sum.keys.forEach((k, i) => {

@@ -389,3 +389,47 @@ dialog.lg-dlg::backdrop { background: rgba(14, 14, 16, .5); }
 .cal-recs b.on { color: var(--c); }
 .cal-recs.theirs { margin-top: 6px; opacity: .85; }
 .cal-day > .lg-btn { margin-top: 12px; }
+
+/* ===================== 🐾 펫 비서 · 기분 ===================== */
+.pet-card { margin: 16px 20px 0; background: #fff; border: 1.5px solid var(--ink); border-radius: 18px; padding: 16px; }
+.pet-top { display: flex; align-items: center; gap: 10px; }
+.pet-img { width: 44px; height: 44px; image-rendering: pixelated; background: #efe9dc; border-radius: 12px; display: grid; place-items: center; font-size: 24px; object-fit: contain; }
+.pet-who { display: flex; flex-direction: column; min-width: 0; }
+.pet-who b { font-size: 15px; }
+.pet-who small { color: var(--ink2); font-size: 12px; }
+.pet-set { margin-left: auto; border: 0; background: none; color: var(--ink2); font-size: 13px; min-height: 36px; padding: 0 8px; border-radius: 999px; }
+.pet-set:hover { background: #ebe7de; color: var(--ink); }
+.pet-say { position: relative; background: #e5e9fb; border-radius: 14px; padding: 12px 14px; margin: 12px 0 14px; font-size: 15px; line-height: 1.6; }
+.pet-say::before { content: ''; position: absolute; top: -7px; left: 16px; border: 7px solid transparent; border-top: 0; border-bottom-color: #e5e9fb; }
+.pet-q { font-size: 13px; font-weight: 700; color: var(--ink2); margin-bottom: 6px; }
+.mood-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mood-row button { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1.5px solid var(--rule); background: #faf8f3; border-radius: 14px; padding: 8px 0 6px; min-height: 60px; cursor: pointer; }
+.mood-row button span { font-size: 26px; line-height: 1.1; }
+.mood-row button small { font-size: 11px; color: var(--ink2); }
+.mood-row button[aria-checked="true"] { border-color: var(--cobalt); background: #e5e9fb; box-shadow: 0 0 0 1.5px var(--cobalt); }
+.mood-row button[aria-checked="true"] small { color: var(--cobalt); font-weight: 700; }
+.pet-form { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.pet-form span { font-size: 20px; }
+.lgpane .pet-form input { flex: 1; min-width: 0; min-height: 42px; border: 1.5px solid var(--rule); border-radius: 10px; padding: 0 12px; font: 15px var(--f-body); background: #fff; color: var(--ink); }
+.pet-form button { min-height: 42px; border: 1.5px solid var(--ink); background: #fff; border-radius: 999px; padding: 0 14px; font-weight: 700; font-size: 13px; color: var(--ink); }
+.lg-pmood { font-size: 18px; }
+.lg-pnote { margin: 6px 0 0; font-size: 13px; color: var(--ink2); }
+.cal-d { position: relative; }
+.cal-mood { position: absolute; top: 6px; right: 6px; font-size: 14px; line-height: 1; }
+@media (max-width: 600px) { .cal-mood { top: 2px; right: 2px; font-size: 11px; } }
+.cal-moods { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cal-moods li { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.cal-moods b { font-size: 24px; }
+.cal-moods small { display: block; color: var(--ink2); font-size: 12px; }
+.lg-rmood span { display: block; font-size: 18px; letter-spacing: 2px; margin-top: 6px; overflow-wrap: anywhere; }
+.pet-dlg .lg-hint { font-size: 13px; color: var(--ink2); line-height: 1.5; font-weight: 400; }
+.pet-slot { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.pet-slot span { flex: 1; display: flex; flex-direction: column; }
+.pet-slot b { font-size: 15px; }
+.pet-slot small { font-size: 12px; color: var(--ink2); }
+.pet-dlg input[type=time], .pet-dlg select, .pet-dlg textarea { min-height: 40px; border: 1.5px solid var(--ink); border-radius: 10px; padding: 0 10px; font: 15px var(--f-body); background: #fff; color: var(--ink); }
+.pet-dlg textarea { padding: 8px 10px; resize: vertical; width: 100%; box-sizing: border-box; }
+.pet-dlg .lg-f select { width: 100%; }
+.pet-try { display: flex; gap: 8px; margin-top: 16px; }
+.pet-try select { flex: 1; min-width: 0; }
+.pet-out { background: #e5e9fb; border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.55; margin: 10px 0 0; }

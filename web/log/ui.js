@@ -44,8 +44,8 @@ export function initLog(ctx) {
     const el = $('paneToday'), list = mine(), today = dayKey();
     const stats = list.map(S), met = stats.filter(s => s.todayMet).length;
     const top = Math.max(0, ...stats.map(s => s.streak));
-    if (!list.length) { el.innerHTML = emptyToday(); return; }
-    el.innerHTML = `
+    if (!list.length) { el.innerHTML = '<div id="lgPetSlot"></div>' + emptyToday(); ctx.afterToday && ctx.afterToday(); return; }
+    el.innerHTML = `<div id="lgPetSlot"></div>
       <section class="lg-sec light lg-hero">
         <div class="lg-kicker">${fmtDate(today)}</div>
         <h1 class="lg-display"><span class="lg-n">${met}</span><span class="lg-of">/${list.length}</span></h1>
@@ -55,6 +55,7 @@ export function initLog(ctx) {
         <button class="lg-add" data-act="new" type="button">+ 새 습관</button>
       </section>
       ${others.map(partnerBlock).join('')}`;
+    ctx.afterToday && ctx.afterToday();
     // 숫자가 올라가는 애니메이션
     list.forEach((t, i) => {
       const v = stats[i].todayAmt, before = shown[t.id + today];
@@ -87,11 +88,12 @@ export function initLog(ctx) {
     </article>`;
   }
   function partnerBlock(m) {
-    const list = theirs(m.id);
-    if (!list.length) return '';
+    const list = theirs(m.id), mood = ctx.moodOf ? ctx.moodOf(m.id) : null;
+    if (!list.length && !mood) return '';
     const st = list.map(S), met = st.filter(s => s.todayMet).length, top = Math.max(0, ...st.map(s => s.streak));
     return `<section class="lg-partner">
-      <div class="lg-ph"><img alt="" src="${avatar(m)}"><b>${esc(m.name)}님</b> <span class="lg-pn">${met}/${list.length} 완료</span>${top ? ` <span class="lg-streak">🔥${top}일</span>` : ''}</div>
+      <div class="lg-ph"><img alt="" src="${avatar(m)}"><b>${esc(m.name)}님</b> <span class="lg-pn">${met}/${list.length} 완료</span>${top ? ` <span class="lg-streak">🔥${top}일</span>` : ''}${mood && mood.score ? ` <span class="lg-pmood" title="오늘 기분">${ctx.moodEmoji(mood.score)}</span>` : ''}</div>
+      ${mood && (mood.note || mood.lunch) ? `<p class="lg-pnote">${mood.note ? `“${esc(mood.note)}”` : ''}${mood.lunch ? ` 🍱 ${esc(mood.lunch)}` : ''}</p>` : ''}
       <ul>${list.map((t, i) => `<li class="${st[i].todayMet ? 'met' : ''}" style="--c:${esc(t.color || '#1f3fbf')}"><span>${esc(t.emoji || '•')} ${esc(t.name)}</span><b>${st[i].todayAmt ? esc(fmtAmount(t, st[i].todayAmt)) : '—'}</b></li>`).join('')}</ul>
     </section>`;
   }
@@ -321,7 +323,7 @@ export function initLog(ctx) {
     const period = b.dataset.rep === 'year' ? { kind: 'year', y: now.getFullYear() }
       : b.dataset.rep === 'lastmonth' ? { kind: 'month', y: new Date(now.getFullYear(), now.getMonth() - 1, 1).getFullYear(), m: new Date(now.getFullYear(), now.getMonth() - 1, 1).getMonth() }
       : { kind: 'month', y: now.getFullYear(), m: now.getMonth() };
-    openReport(period, { me, trackers: trackers.filter(t => t.owner === me.id), byT, earned: myAch().earned, toast });
+    openReport(period, { me, trackers: trackers.filter(t => t.owner === me.id), byT, earned: myAch().earned, toast, moods: ctx.moods ? ctx.moods().filter(x => x.owner === me.id) : [] });
   });
 
   // ==================================================================

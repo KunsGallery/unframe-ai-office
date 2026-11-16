@@ -50,6 +50,7 @@
 ## 처음 한 번만 할 일
 1. **Netlify 환경변수**: Netlify → unframe-office → Site configuration → Environment variables에
    - `ANTHROPIC_API_KEY` (✨AI 요약용, https://console.anthropic.com 에서 발급)
+   - `FIREBASE_SERVICE_ACCOUNT` (🐾 펫 비서용. Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → 새 비공개 키 생성 → 받은 JSON 내용 전체를 붙여넣고 Secret으로)
    - `VAPID_PRIVATE_KEY` (🔔 웹 푸시용 비밀 키. 짝인 공개 키는 `web/push-config.js`. 새로 만들려면 `npx web-push generate-vapid-keys` 후 둘 다 바꿈)
    추가 후 Deploys → Trigger deploy.
 2. **Firebase 승인 도메인**: Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 Netlify 주소(`unframe-office.netlify.app` 등) 추가. 안 하면 로그인 팝업이 막혀요.
@@ -103,6 +104,7 @@ http://localhost:4545 (localhost는 Firebase가 기본 허용). 주소 뒤에 `?
 - **💬 펫 말풍선 · 💧 환기 알림**: 펫 창에서 펫이 내 Claude 상태를 말풍선으로 알려줘요("Header.tsx 고치는 중이에요", "Bash 사용 승인이 필요해요!"). 물·스트레칭·눈 쉬기를 정한 간격마다 챙겨주고, 펫을 누르거나 알림 버튼으로 완료(오늘 물 n잔 기록). 꾸미기에서 켜고 끄고 간격 조절, 이 기기에만 저장.
 - **❓ 도움말 · ⌨️ 단축키**: 헤더의 도움말 버튼이나 `?`. 단축키 M(메시지) B(화이트보드) R(확인 요청) J(업무일지) L(꾸미기) P(작은 창) — 한글 입력 상태에서도 동작.
 - **💬 메시지**: 멤버끼리 1:1 채팅. 메시지를 보내면 보낸 사람 캐릭터 머리 위에도 말풍선이 떠요. 상대 상태(🎧 집중 등)와 안 읽은 개수가 보이고, 링크는 눌러서 열 수 있어요.
+- **🐾 펫 비서**: 각자의 펫이 정한 시간에 휴대폰으로 말을 걸어요 — ☀️ 아침 브리핑(기본 8:30: 오늘 기분 묻기·날씨·오늘 일정·마감 할 일), 🍱 점심 체크인(13:00: 뭐 먹었는지 + 오후 응원), 📋 마감 할 일(16:00, 남아 있을 때만), 🌙 저녁 습관 챙기기(21:00). Claude(Haiku)가 내 기록과 말투 설정을 보고 매일 새로 써요. ⋯ → 🐾 펫 비서에서 시간·주말·날씨 지역(Open-Meteo)·말투를 정하고 "지금 받아 보기". 오늘 탭 맨 위 펫 카드에서 기분(😫😕😐🙂😄)·한마디·점심을 남기면 캘린더·월간 리포트·상대의 오늘 화면에 보여요. `netlify/functions/pet-assistant.mjs`(10분마다), `pet-now.mjs`, `netlify/lib/pet.mjs`.
 - **🔔 알림**: 켜두면 새 메시지, *내* Claude의 승인 요청·작업 완료 때 소리 + (다른 탭에 있을 때) 데스크톱 알림.
 - **지금 일하는 중 / 최근 활동**: 세션별 프로젝트, 현재 도구, 서브에이전트 목록.
 - 라운지의 강아지·고양이를 클릭하면 하트가 떠요.

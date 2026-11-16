@@ -37,6 +37,13 @@ export function firebaseWorkStore(F, db, meId) {
     addEvent: e => F.addDoc(events, { ...e, owner: meId, createdAt: F.serverTimestamp(), updatedAt: F.serverTimestamp() }),
     updateEvent: (id, patch) => F.updateDoc(F.doc(events, id), { ...patch, updatedAt: F.serverTimestamp() }),
     deleteEvent: id => F.deleteDoc(F.doc(events, id)),
+
+    // 😊 기분·점심 (멤버__날짜), 🐾 펫이 보낸 말, 펫 비서 설정
+    onMoods: (cb, err) => both(F.collection(db, 'moods'), cb, err),
+    saveMood: (day, patch) => F.setDoc(F.doc(db, 'moods', `${meId}__${day}`), { ...patch, owner: meId, day, updatedAt: F.serverTimestamp() }, { merge: true }),
+    onPetNotes: (day, cb) => F.onSnapshot(F.query(F.collection(db, 'petNotes'), F.where('member', '==', meId), F.where('day', '==', day)), s => cb(conv(s)), () => cb([])),
+    getAssistant: async () => { const d = await F.getDoc(F.doc(db, 'assistant', meId)); return d.exists() ? d.data() : null; },
+    saveAssistant: a => F.setDoc(F.doc(db, 'assistant', meId), { ...a, updatedAt: F.serverTimestamp() }),
   };
 }
 
@@ -102,8 +109,23 @@ export function demoWorkStore(meId, otherId) {
     ev(otherId, '정산 마감', 9, '', '');
   }
 
+  // 기분 60일치 (점심 몇 개)
+  const M = [];
+  const LUNCH = ['김치찌개', '샐러드', '돈가스', '쌀국수', '김밥', '비빔밥'];
+  for (let i = 60; i >= 0; i--) {
+    const d = addDays(today, -i);
+    if (i > 0 || otherId) {
+      for (const o of [meId, otherId].filter(Boolean)) {
+        if (o === meId && i === 0) continue;   // 오늘 내 기분은 비워 둬서 고르는 화면을 볼 수 있게
+        if (Math.random() < 0.8) M.push({ id: `${o}__${d}`, owner: o, day: d, score: 2 + Math.floor(Math.random() * 4), note: '', lunch: Math.random() < 0.4 ? LUNCH[i % LUNCH.length] : '', shared: true });
+      }
+    }
+  }
+  let assistant = null;
+  const notes = [{ id: 'n1', member: meId, day: today, slot: 'brief', text: '좋은 아침이에요 멍! 🐾 오늘 기분은 어때요? 서울은 흐리고 3~11°C예요. 오후 4시 박소연님 외근이 있고, 마감 지난 할 일 「오후 3시 배포」가 하나 있어요.', at: now - 3600e3 }];
   const visible = x => x.owner === meId || x.shared;
-  const subs = { p: [], e: [] };
+  const subs = { p: [], e: [], m: [] };
+  const pushM = () => subs.m.forEach(cb => cb(M.filter(visible).map(m => ({ ...m }))));
   const pushP = () => subs.p.forEach(cb => cb(P.filter(visible).map(p => structuredClone(p))));
   const pushE = () => subs.e.forEach(cb => cb(E.filter(visible).map(e => ({ ...e }))));
   const denied = () => Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
@@ -127,5 +149,10 @@ export function demoWorkStore(meId, otherId) {
     async addEvent(e) { E.push({ ...e, id: 'e' + Date.now().toString(36), owner: meId, createdAt: Date.now(), updatedAt: Date.now() }); pushE(); },
     async updateEvent(id, patch) { const e = E.find(x => x.id === id); if (e.owner !== meId && !e.shared) throw denied(); Object.assign(e, patch, { updatedAt: Date.now() }); pushE(); },
     async deleteEvent(id) { const i = E.findIndex(x => x.id === id); E.splice(i, 1); pushE(); },
+    onMoods: cb => { subs.m.push(cb); pushM(); },
+    async saveMood(day, patch) { const id = `${meId}__${day}`; let m = M.find(x => x.id === id); if (!m) M.push(m = { id, owner: meId, day, shared: true }); Object.assign(m, patch); pushM(); },
+    onPetNotes: (day, cb) => cb(notes.filter(x => x.day === day)),
+    getAssistant: async () => assistant,
+    saveAssistant: async a => { assistant = { ...a }; },
   };
 }
