@@ -3,15 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude Office</title>
-<meta name="theme-color" content="#17141f">
+<title>Unframe Log</title>
+<meta name="theme-color" content="#111114">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Claude Office">
+<meta name="apple-mobile-web-app-title" content="Unframe Log">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="log/log.css">
 <style>
   :root {
     --bg: #17141f; --panel: #221d2c; --panel2: #2b2438; --line: #3a3247; --text: #efe9f7; --muted: #a59bb5;
@@ -35,8 +40,8 @@
   .conn { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
   .conn i { width: 8px; height: 8px; border-radius: 50%; background: #e05656; display: inline-block; }
   .conn.on i { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; max-width: 1560px; margin: 0 auto; }
-  @media (max-width: 1000px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  main, .mainlike { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px 20px; max-width: 1560px; margin: 0 auto; }
+  @media (max-width: 1000px) { main, .mainlike { grid-template-columns: 1fr; padding: 12px 16px; } }
   .stage { align-self: start; background: #0f0d14; border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; justify-content: center; }
   canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; border-radius: 4px; }
   aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -236,24 +241,69 @@
   kbd { background: #1b1724; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font: 12px ui-monospace, Menlo, monospace; color: var(--text); }
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #2f2742; border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 13px; z-index: 60; max-width: calc(100vw - 32px); }
   .toast[hidden] { display: none; }
+  /* 상단 바 + 탭 (Unframe Log) */
+  header.topbar { background: #111114; color: #f3f1ec; border-bottom: 0; padding: 10px 20px; gap: 10px 16px; position: sticky; top: 0; z-index: 30; flex-wrap: nowrap; }
+  .brand { font: 600 19px "Oswald", sans-serif !important; letter-spacing: .02em !important; text-transform: uppercase; white-space: nowrap; }
+  .brand span { color: #8ea0ff; }
+  header.topbar .sub { font-size: 12px; color: #9a98a0; white-space: nowrap; }
+  .tabbar { display: flex; gap: 2px; margin: 0 auto; }
+  .tabbar button { background: none; border: 0; color: #b9b7bf; padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; position: relative; white-space: nowrap; }
+  .tabbar button i { font-style: normal; font-size: 11px; opacity: .7; }
+  .tabbar button:hover { color: #fff; }
+  .tabbar button[aria-current="page"] { background: #f3f1ec; color: #111114; }
+  .tabbar .badge { position: absolute; top: -2px; right: -4px; }
+  .headright { display: flex; align-items: center; gap: 10px; }
+  .headright .me span { display: none; }
+  header.topbar .conn span { display: none; }
+  #moreBtn { border-color: #3a3a40; color: #f3f1ec; font-size: 16px; line-height: 1; padding: 6px 12px; }
+  header.topbar .tools { position: absolute; top: calc(100% + 6px); right: 12px; margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 240px; box-shadow: 0 12px 32px rgba(0,0,0,.35); color: var(--text); }
+  header.topbar .tools[hidden] { display: none; }
+  header.topbar .tools .btn, header.topbar .tools select { width: 100%; text-align: left; padding: 8px 10px; font-size: 13px; }
+  header.topbar .tools .pipmenu { right: auto; left: 0; }
+  .together-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .together-head h2 { margin: 0; font-size: 22px; }
+  .together-head .sub { color: var(--muted); font-size: 13px; }
+  .together-head .btn { margin-left: auto; align-self: center; }
+  @media (max-width: 760px) {
+    header.topbar { padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top)); }
+    header.topbar .sub { display: none; }
+    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; background: #111114; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; border-top: 1px solid #2a2a30; }
+    .tabbar button { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 8px; min-width: 56px; border-radius: 12px; }
+    .tabbar button i { font-size: 14px; }
+    .headright { margin-left: auto; }
+    .mainlike { padding-bottom: 90px !important; }
+    .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  }
 </style>
 </head>
 <body>
 <div id="gate">
   <div class="gate-box">
     <div class="chars" id="gateChars"></div>
-    <h2>🏢 Claude Office</h2>
-    <p>우리 팀 Claude Code가 일하는 사무실</p>
+    <h2>Unframe Log</h2>
+    <p>아주 짧은 노력이라도 매일 쌓이는 곳 · 기록, 성취, 그리고 우리 사무실</p>
     <button class="btn primary" id="signin">Google 계정으로 로그인</button>
     <button class="btn" id="demoBtn" hidden>데모로 둘러보기</button>
     <div class="gate-err" id="gateErr" hidden></div>
   </div>
 </div>
 
-<header>
-  <h1>🏢 Claude Office</h1>
-  <span class="sub" id="modeNote">우리 팀 Claude Code가 지금 뭐 하는지</span>
-  <span class="tools">
+<header class="topbar">
+  <h1 class="brand"><span>Unframe</span> Log</h1>
+  <span class="sub" id="modeNote"></span>
+  <nav class="tabbar" id="tabbar" aria-label="화면">
+    <button type="button" data-tab="today"><i>●</i>오늘</button>
+    <button type="button" data-tab="log"><i>▦</i>내 기록</button>
+    <button type="button" data-tab="achieve"><i>★</i>성취</button>
+    <button type="button" data-tab="together"><i>✉</i>함께<span class="badge" id="togetherBadge" hidden></span></button>
+    <button type="button" data-tab="office"><i>▣</i>오피스</button>
+  </nav>
+  <span class="headright">
+    <span class="conn" id="conn" title="실시간 연결"><i></i><span>연결 중…</span></span>
+    <span class="me" id="me"></span>
+    <button class="btn" id="moreBtn" aria-expanded="false" aria-controls="tools" title="메뉴">⋯</button>
+  </span>
+  <span class="tools" id="tools" hidden>
     <span class="me" id="me"></span>
     <select class="btn" id="status" aria-label="내 상태">
       <option value="work">💼 근무 중</option><option value="meeting">📅 회의 중</option><option value="focus">🎧 집중</option><option value="break">☕ 휴식</option>
@@ -270,19 +320,17 @@
     </span>
     <button class="btn" id="helpBtn" title="도움말 (단축키 ?)">❓ 도움말</button>
     <button class="btn" id="notify" aria-pressed="false">🔕 알림 꺼짐</button>
-    <button class="btn" id="journalBtn">📓 업무일지</button>
     <button class="btn" id="connectBtn">🔌 내 PC 연결</button>
     <button class="btn" id="signout">로그아웃</button>
-    <span class="conn" id="conn"><i></i><span>연결 중…</span></span>
   </span>
 </header>
-<main>
+<section class="pane lgpane" id="paneToday" aria-label="오늘"></section>
+<section class="pane lgpane" id="paneLog" aria-label="내 기록" hidden></section>
+<section class="pane lgpane" id="paneAchieve" aria-label="성취" hidden></section>
+<div class="pane mainlike" id="paneTogether" hidden>
   <div class="left">
-    <div class="stage" id="stage"><canvas id="c"></canvas></div>
-    <section class="card" id="memoCard" hidden>
-      <h2>📝 회의 메모 <span class="right" id="memoMeta"></span></h2>
-      <textarea id="memo" class="memo" maxlength="5000" placeholder="회의하면서 같이 적어요. 자동 저장되고 오늘 업무일지에 들어가요."></textarea>
-    </section>
+    <div class="together-head"><h2>함께</h2><span class="sub">메시지 · 할 일 · 확인 요청 · 업무일지</span>
+      <button class="btn" id="journalBtn">📓 업무일지</button></div>
     <div class="duo">
       <section class="card" id="boardCard">
         <h2>📋 화이트보드 <span id="boardCount"></span>
@@ -302,7 +350,6 @@
     </div>
   </div>
   <aside>
-    <div class="card"><h2>지금 일하는 중</h2><div class="team" id="team"></div><div id="people"></div></div>
     <div class="card">
       <h2>💬 메시지</h2>
       <div class="tabs" id="tabs" role="tablist"></div>
@@ -313,6 +360,18 @@
         <button class="btn primary" type="submit">보내기</button>
       </form>
     </div>
+  </aside>
+</div>
+<div class="pane mainlike" id="paneOffice" hidden>
+  <div class="left">
+    <div class="stage" id="stage"><canvas id="c"></canvas></div>
+    <section class="card" id="memoCard" hidden>
+      <h2>📝 회의 메모 <span class="right" id="memoMeta"></span></h2>
+      <textarea id="memo" class="memo" maxlength="5000" placeholder="회의하면서 같이 적어요. 자동 저장되고 오늘 업무일지에 들어가요."></textarea>
+    </section>
+  </div>
+  <aside>
+    <div class="card"><h2>지금 일하는 중</h2><div class="team" id="team"></div><div id="people"></div></div>
     <div class="card"><h2>최근 활동</h2><ul class="log" id="log"></ul></div>
     <div class="card"><h2>방 안내</h2>
       <div class="legend">
@@ -323,7 +382,7 @@
     </div>
     <div class="credit">캐릭터·가구 스프라이트: <a href="https://github.com/pixel-agents-hq/pixel-agents" target="_blank" rel="noopener">Pixel Agents</a> (MIT), 캐릭터 원작 JIK-A-4 Metro City</div>
   </aside>
-</main>
+</div>
 
 <dialog id="connect">
   <h3>🔌 내 PC를 사무실에 연결</h3>
@@ -400,11 +459,24 @@
 <dialog id="helpDlg" class="wide">
   <div class="jtools"><h3 class="grow" style="margin:0">❓ 도움말</h3><button class="btn primary" id="helpClose">닫기</button></div>
   <div class="help">
-    <p>Claude Office는 우리 팀의 Claude Code 작업을 픽셀 사무실로 보여주고, 메시지·할 일·확인 요청·업무일지를 한곳에서 쓰는 사무실이에요.</p>
+    <p>Unframe Log는 두 사람의 기록·성취 공간이에요. 아주 짧은 노력이라도 매일 쌓으면 얼마가 되는지 내 기록으로 보여줘요. 예전 Claude Office(픽셀 사무실·메시지·할 일·확인 요청·업무일지)도 탭 안에 그대로 있어요.</p>
+
+    <h4>🗂 탭</h4>
+    <table>
+      <tr><td>오늘</td><td>내 습관을 한 번 눌러 기록 (분 +5·+10·+15·+30 / 개수 +1·+5 / 했어요, … 로 직접 입력). 잘못 눌렀으면 ↶ 또는 알림의 되돌리기. ✎로 오늘 한마디. 아래에 상대의 오늘 진행(공개 습관만)</td></tr>
+      <tr><td>내 기록</td><td>습관 하나의 올해 누적 숫자, 365점 그리드, 원형 연간 달력, "이 속도면" 계산기(−/+를 누르면 바로 다시 계산), 월별 막대. 습관 고치기·보관</td></tr>
+      <tr><td>성취</td><td>업적(첫 기록, 연속 7·30·100·365일, 누적 시간·개수, 기록한 날, 한 달 개근)과 다음 목표. 달성하면 축하 화면이 한 번 떠요. 월간·연간 리포트는 이미지로 저장할 수 있어요</td></tr>
+      <tr><td>함께</td><td>메시지 · 📋 화이트보드 · 🙋 확인 요청 · 📓 업무일지</td></tr>
+      <tr><td>오피스</td><td>픽셀 사무실 (Claude 상태, 걷기, 펫, 작은 창)</td></tr>
+      <tr><td>🔒 나만 보기</td><td>습관을 만들 때 고르면 그 습관과 기록은 상대에게 보이지 않아요</td></tr>
+    </table>
+    <p>꾸미기·작은 창·알림·앱 설치·내 PC 연결·로그아웃은 오른쪽 위 <b>⋯</b> 메뉴에 있어요.</p>
 
     <h4>⌨️ 단축키</h4>
     <table>
       <tr><td><kbd>?</kbd></td><td>도움말 열기·닫기</td></tr>
+      <tr><td><kbd>1</kbd>~<kbd>5</kbd></td><td>오늘 · 내 기록 · 성취 · 함께 · 오피스 탭</td></tr>
+      <tr><td><kbd>N</kbd></td><td>새 습관 만들기</td></tr>
       <tr><td><kbd>M</kbd></td><td>메시지 입력칸으로</td></tr>
       <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>메시지 보내기 / 줄 바꾸기</td></tr>
       <tr><td><kbd>B</kbd></td><td>화이트보드(할 일 추가)</td></tr>
@@ -479,7 +551,7 @@
   <ol>
     <li>Safari 아래쪽의 <b>공유</b> 버튼(네모에 위 화살표)을 눌러요.</li>
     <li><b>홈 화면에 추가</b>를 눌러요.</li>
-    <li>홈 화면의 <b>Claude Office</b> 아이콘으로 앱처럼 열어요.</li>
+    <li>홈 화면의 <b>Unframe Log</b> 아이콘으로 앱처럼 열어요.</li>
   </ol>
   <div class="row"><button class="btn primary" id="iosClose">알겠어요</button></div>
 </dialog>

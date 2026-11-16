@@ -118,12 +118,58 @@ service cloud.firestore {
       function okLook(c, h) { return c is int && c >= 0 && c <= 5 && h is int && h >= 0 && h < 360; }
       allow read: if isMember();
       allow write: if isMember() && pid == myId()
-        && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName', 'pet', 'petName'])
+        && request.resource.data.keys().hasOnly(['char', 'hue', 'claudeChar', 'claudeHue', 'claudeName', 'pet', 'petName', 'seenAchievements'])
+        && (!('seenAchievements' in request.resource.data) || (request.resource.data.seenAchievements is list && request.resource.data.seenAchievements.size() <= 500))
         && (!('pet' in request.resource.data) || request.resource.data.pet in ['collie', 'husky', 'golden', 'dog', 'cat', 'rabbit', 'none'])
         && (!('petName' in request.resource.data) || (request.resource.data.petName is string && request.resource.data.petName.size() <= 12))
         && okLook(request.resource.data.char, request.resource.data.hue)
         && okLook(request.resource.data.claudeChar, request.resource.data.claudeHue)
         && request.resource.data.claudeName is string && request.resource.data.claudeName.size() <= 16;
+    }
+
+    // 🔥 Unframe Log 습관. 본인만 쓰고, 읽기는 멤버 전체 (단 private 습관은 본인만)
+    match /trackers/{tid} {
+      function okTracker(d) {
+        return d.keys().hasOnly(['owner', 'name', 'emoji', 'unit', 'unitLabel', 'dailyGoal', 'color', 'private', 'order', 'createdAt', 'archived'])
+          && d.owner == myId()
+          && d.name is string && d.name.size() > 0 && d.name.size() <= 40
+          && d.emoji is string && d.emoji.size() <= 16
+          && d.unit in ['minutes', 'count', 'check']
+          && d.unitLabel is string && d.unitLabel.size() <= 10
+          && d.dailyGoal is number && d.dailyGoal >= 0 && d.dailyGoal <= 100000
+          && d.color is string && d.color.matches('#[0-9a-fA-F]{6}')
+          && d.private is bool && d.archived is bool && d.order is number
+          && d.createdAt is timestamp;
+      }
+      allow read: if isMember() && (resource.data.owner == myId() || resource.data.private == false);
+      allow create: if isMember() && okTracker(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if isMember() && resource.data.owner == myId() && okTracker(request.resource.data)
+        && request.resource.data.unit == resource.data.unit && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isMember() && resource.data.owner == myId();
+    }
+
+    // 🔥 Unframe Log 기록: '멤버id__습관id__날짜' 하루 한 문서 (양은 합산). private는 습관과 같아야 한다
+    match /logs/{lid} {
+      function myTracker(d) {
+        let t = get(/databases/$(database)/documents/trackers/$(d.tracker)).data;
+        return t.owner == myId() && t.private == d.private;
+      }
+      function okLog(d) {
+        return d.keys().hasOnly(['owner', 'tracker', 'day', 'amount', 'note', 'private', 'updatedAt'])
+          && d.owner == myId()
+          && d.tracker is string && d.tracker.size() > 0 && d.tracker.size() <= 40
+          && d.day is string && d.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          && lid == myId() + '__' + d.tracker + '__' + d.day
+          && d.amount is number && d.amount >= 0 && d.amount <= 100000
+          && (!('note' in d) || (d.note is string && d.note.size() <= 200))
+          && d.private is bool
+          && d.updatedAt == request.time
+          && myTracker(d);
+      }
+      allow read: if isMember() && (resource.data.owner == myId() || resource.data.private == false);
+      allow create: if isMember() && okLog(request.resource.data);
+      allow update: if isMember() && resource.data.owner == myId() && okLog(request.resource.data);
+      allow delete: if isMember() && resource.data.owner == myId();
     }
 
     // 📝 회의 메모 (날짜마다 한 문서, 멤버 누구나 고침)

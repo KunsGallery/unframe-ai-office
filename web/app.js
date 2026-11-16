@@ -1,7 +1,10 @@
-// Claude Office — 로그인, 데이터(Firebase 또는 데모), 채팅, 알림
+// Unframe Log (구 Claude Office) — 로그인, 데이터(Firebase 또는 데모), 탭, 채팅, 알림
+// 기록·성취 화면은 log/ 폴더 모듈이 그린다
 import { MEMBERS } from './members.js';
 import { firebaseConfig } from './firebase-config.js';
 import * as office from './office.js';
+import { initLog } from './log/ui.js';
+import { firebaseLogStore, demoLogStore } from './log/store.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -74,7 +77,8 @@ async function firebaseStore() {
       s => cb(s.docs.map(d => ({ id: d.id, from: d.data().from, text: d.data().text, at: ms(d), pending: d.metadata.hasPendingWrites }))), err),
     send: (chatId, text) => F.addDoc(F.collection(db, 'chats', chatId, 'messages'), { from: me.id, text, at: F.serverTimestamp() }),
     onProfiles: cb => F.onSnapshot(F.collection(db, 'profiles'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()])))),
-    saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p),
+    saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p, { merge: true }),
+    logStore: () => firebaseLogStore(F, db, me.id),
     heartbeat: (status, pos) => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status, pos: pos || null }),
     onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work', pos: d.data().pos || null }])))),
     // 📝 회의 메모 (날짜마다 한 장)
@@ -214,7 +218,8 @@ function demoStore() {
         setTimeout(() => addMsg(id, other.id, ['넵 확인했습니다 👍', '좋아요! 그렇게 진행할게요', '잠시만요, 확인하고 알려드릴게요'][Math.floor(Math.random() * 3)]), 2500);
     },
     onProfiles: cb => { subs.profiles = cb; cb({}); },
-    saveProfile: async p => { profilesDemo[me.id] = p; subs.profiles && subs.profiles({ ...profilesDemo }); },
+    saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
+    logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
     heartbeat: async (status, pos) => {
       presenceDemo[me.id] = { at: Date.now(), status, pos: pos || null };
       subs.presence.forEach(cb => cb({ ...presenceDemo }));
@@ -282,7 +287,7 @@ async function boot() {
     me = m;
     $('gate').hidden = true;
     $('me').innerHTML = `<img alt="" src="${avatar(m)}"><span>${esc(m.name)} <small>${esc(m.title || '')}</small></span>`;
-    if (!started) { started = true; startOffice(); }
+    if (!started) { started = true; startLog(); startOffice(); }
   });
 }
 function loginError(e) {
@@ -307,6 +312,7 @@ function startOffice() {
   applyProfiles();
   store.onProfiles(p => {
     profiles = p; applyProfiles();
+    if (logUi) logUi.setProfile(profiles[me.id]);
     pushOffice(); renderChat(); renderBoard(); renderRequests();
   }, err => toast('꾸미기 정보를 불러오지 못했어요 (' + err.code + ')'));
   const conn = $('conn');
@@ -399,7 +405,7 @@ function onArrive(t) {
   // 다른 사람 옆 → 똑똑 (채팅창 열고 인사말 준비)
   const other = (t.near || []).find(d => d.owner !== me.id);
   if (other && chats[chatIdWith(other.owner)]) {
-    active = chatIdWith(other.owner); renderChat();
+    showTab('together'); active = chatIdWith(other.owner); renderChat();
     if (!$('input').value) $('input').value = '👋 똑똑! 잠깐 얘기 가능해요?';
     $('input').focus(); autosize();
     toast(`👋 ${other.user}님 옆이에요. Enter를 누르면 똑똑을 보내요.`);
@@ -417,13 +423,13 @@ function onOfficeEvent(kind, s) {
   if (kind === 'human') {
     // 내 캐릭터 → 상태 바꾸기, 다른 사람 → 채팅
     if (s.owner === me.id) openLook();
-    else if (chats[chatIdWith(s.owner)]) { active = chatIdWith(s.owner); renderChat(); $('input').focus(); }
+    else if (chats[chatIdWith(s.owner)]) { showTab('together'); active = chatIdWith(s.owner); renderChat(); $('input').focus(); }
     return;
   }
   if (kind === 'actor') {
     // 내 캐릭터 → 확인 요청, 다른 사람 캐릭터 → 그 사람과 채팅
     if (s.owner === me.id) openRequestDialog(s.project);
-    else if (chats[chatIdWith(s.owner)]) { active = chatIdWith(s.owner); renderChat(); $('input').focus(); }
+    else if (chats[chatIdWith(s.owner)]) { showTab('together'); active = chatIdWith(s.owner); renderChat(); $('input').focus(); }
     return;
   }
   if (!me || s.owner !== me.id) return; // 내 Claude만 알림
@@ -496,12 +502,12 @@ function onNewMessage(c, x) {
   office.say(nameOf(x.from), x.text);     // 보낸 사람 캐릭터 머리 위 말풍선
   if (x.from === me.id || quiet()) return;
   chime('msg');
-  if (document.hidden || c.id !== active) notify(`💬 ${nameOf(x.from)}`, x.text, () => { active = c.id; renderChat(); });
+  if (document.hidden || c.id !== active) notify(`💬 ${nameOf(x.from)}`, x.text, () => { showTab('together'); active = c.id; renderChat(); });
 }
 
 function unread(c) { const r = getRead(c.id); return c.msgs.filter(x => x.from !== me.id && x.at > r).length; }
 function markRead() {
-  const c = chats[active]; if (!c || document.hidden || !c.msgs.length) return;
+  const c = chats[active]; if (!c || document.hidden || currentTab !== 'together' || !c.msgs.length) return;
   setRead(c.id, Math.max(getRead(c.id), c.msgs[c.msgs.length - 1].at));
 }
 
@@ -514,7 +520,8 @@ function renderChat() {
     return `<button class="tab" role="tab" data-id="${esc(c.id)}" aria-selected="${c.id === active}">${ava}${esc(c.title)}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('') || '<span class="empty">대화할 멤버가 없어요. members.json에 추가하세요.</span>';
   const total = tabs.reduce((a, c) => a + unread(c), 0);
-  document.title = (total ? `(${total}) ` : '') + 'Claude Office';
+  document.title = (total ? `(${total}) ` : '') + 'Unframe Log';
+  togetherBadge();
   renderPeer();
 
   const c = chats[active], box = $('msgs');
@@ -694,6 +701,7 @@ $('boardForm').addEventListener('submit', e => {
   store.addBoard(text, who, due).catch(err => { toast('추가하지 못했어요 (' + (err.code || err.message) + ')'); $('boardInput').value = text; });
 });
 function focusBoard() {
+  showTab('together');
   $('boardCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
   $('boardCard').classList.remove('flash'); void $('boardCard').offsetWidth; $('boardCard').classList.add('flash');
   $('boardInput').focus({ preventScroll: true });
@@ -724,6 +732,7 @@ function startRequests() {
   }, err => toast('확인 요청을 불러오지 못했어요 (' + err.code + ')'));
 }
 function renderRequests() {
+  togetherBadge();
   const open = requests.filter(r => r.status === 'open');
   // 요청을 보낸 사람 캐릭터에 📌 표시
   office.setMarks(Object.fromEntries(open.map(r => [nameOf(r.from), '📌 '])));
@@ -1122,7 +1131,9 @@ document.addEventListener('keydown', e => {
   const go = fn => { e.preventDefault(); fn(); };
   if (help) go(() => $('helpDlg').open ? $('helpDlg').close() : $('helpDlg').showModal());
   else if (e.shiftKey) return;
-  else if (e.code === 'KeyM') go(() => $('input').focus());
+  else if (/^Digit[1-5]$/.test(e.code)) go(() => showTab(TABS[+e.code.slice(5) - 1]));
+  else if (e.code === 'KeyN') go(() => { showTab('today'); logUi && logUi.newTracker(); });
+  else if (e.code === 'KeyM') go(() => { showTab('together'); $('input').focus(); });
   else if (e.code === 'KeyB') go(focusBoard);
   else if (e.code === 'KeyJ') go(() => $('journalBtn').click());
   else if (e.code === 'KeyR') go(() => openRequestDialog(''));
@@ -1157,5 +1168,42 @@ $('installBtn').onclick = async () => {
   else $('iosDlg').showModal();
 };
 $('iosClose').onclick = () => $('iosDlg').close();
+
+// ======================================================================
+//  탭: 오늘 / 내 기록 / 성취 / 함께 / 오피스
+// ======================================================================
+const TABS = ['today', 'log', 'achieve', 'together', 'office'];
+const PANE = { today: 'paneToday', log: 'paneLog', achieve: 'paneAchieve', together: 'paneTogether', office: 'paneOffice' };
+let currentTab = 'today', logUi = null;
+function showTab(tab, { push = true } = {}) {
+  if (!TABS.includes(tab)) tab = 'today';
+  const changedTab = tab !== currentTab;
+  currentTab = tab;
+  for (const t of TABS) $(PANE[t]).hidden = t !== tab;
+  document.querySelectorAll('#tabbar [data-tab]').forEach(b => (b.dataset.tab === tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
+  document.body.classList.toggle('lg-on', ['today', 'log', 'achieve'].includes(tab));
+  if (push && location.hash !== '#' + tab) history.replaceState(null, '', location.pathname + location.search + '#' + tab);
+  if (tab === 'office') window.dispatchEvent(new Event('resize'));   // 숨어 있던 캔버스 크기 다시 재기
+  if (tab === 'together' && me) { markRead(); renderChat(); }
+  if (logUi) logUi.show(tab);
+  if (changedTab) window.scrollTo(0, 0);
+}
+$('tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
+addEventListener('hashchange', () => showTab(location.hash.slice(1), { push: false }));
+// 함께 탭 배지: 안 읽은 메시지 + 나에게 온 대기 중 확인 요청
+function togetherBadge() {
+  if (!me) return;
+  const n = Object.values(chats).reduce((a, c) => a + unread(c), 0) + requests.filter(r => r.to === me.id && r.status === 'open').length;
+  $('togetherBadge').hidden = !n; $('togetherBadge').textContent = n;
+}
+// ⋯ 메뉴
+$('moreBtn').onclick = e => { e.stopPropagation(); const open = $('tools').hidden; $('tools').hidden = !open; $('moreBtn').setAttribute('aria-expanded', open); };
+document.addEventListener('click', e => { if (!$('tools').hidden && !e.target.closest('#tools, #moreBtn')) { $('tools').hidden = true; $('moreBtn').setAttribute('aria-expanded', 'false'); } });
+function startLog() {
+  // 업적 축하를 한 번만 보이려고 본 업적 id를 profiles에 남긴다 (생김새 값도 같이 써야 규칙을 통과)
+  const saveSeen = ids => { const l = look(me); return store.saveProfile({ char: l.char, hue: l.hue, claudeChar: l.claudeChar, claudeHue: l.claudeHue, claudeName: l.claudeName, pet: l.pet, petName: l.petName, seenAchievements: ids.slice(-400) }); };
+  logUi = initLog({ store: store.logStore(), me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab });
+  showTab(location.hash.slice(1) || 'today', { push: false });
+}
 
 boot();
