@@ -9,6 +9,7 @@ import { firebaseWorkStore, demoWorkStore } from './log/workstore.js';
 import { initDocs } from './log/docs.js';
 import { initCalendar } from './log/calendar.js';
 import { initPet, moodEmoji } from './log/pet.js';
+import './log/emoji.js';   // data-emoji-picker 칸을 누르면 이모지 창
 import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, deviceName } from './push.js';
 
 const $ = id => document.getElementById(id);

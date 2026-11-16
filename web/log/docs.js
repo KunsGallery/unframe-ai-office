@@ -140,7 +140,7 @@ export function initDocs(ctx) {
           <button class="lg-btn ghost" data-act="del" type="button" title="삭제">삭제</button>` : `<span class="dc-badge">👥 ${esc(nameOf(doc.owner))}님 문서</span>`}</div>
       <div class="dc-conflict" id="dcConflict" hidden></div>
       <article class="dc-page">
-        <input class="dc-emoji" id="dcEmoji" value="${esc(doc.emoji)}" maxlength="8" aria-label="이모지">
+        <input class="dc-emoji" id="dcEmoji" value="${esc(doc.emoji)}" maxlength="8" readonly data-emoji-picker aria-label="문서 아이콘 고르기" title="눌러서 아이콘 바꾸기">
         <textarea class="dc-title" id="dcTitle" rows="1" maxlength="100" placeholder="제목 없음" aria-label="제목">${esc(doc.title)}</textarea>
         <div class="dc-tags" id="dcTags">${doc.tags.map(t => `<span class="dc-tag">#${esc(t)}<button type="button" data-untag="${esc(t)}" aria-label="${esc(t)} 태그 빼기">×</button></span>`).join('')}
           ${doc.tags.length < 10 ? '<input id="dcTagIn" maxlength="20" placeholder="+ 태그" aria-label="태그 추가 (Enter)">' : ''}</div>

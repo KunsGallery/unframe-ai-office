@@ -378,7 +378,7 @@ export function initLog(ctx) {
     const v = t || preset || { name: '', emoji: '', unit: 'minutes', unitLabel: '', dailyGoal: 20, color: COLORS[mine().length % COLORS.length], private: false };
     dlg.innerHTML = `<form method="dialog">
       <h3>${t ? '습관 고치기' : '새 습관'}</h3>
-      <div class="lg-frow"><label class="lg-f" style="flex:0 0 70px">이모지<input name="emoji" maxlength="8" value="${esc(v.emoji)}" placeholder="📖"></label>
+      <div class="lg-frow"><label class="lg-f" style="flex:0 0 70px">이모지<input name="emoji" maxlength="8" value="${esc(v.emoji)}" placeholder="😀" readonly data-emoji-picker class="em-field" aria-label="이모지 고르기"></label>
         <label class="lg-f">이름<input name="name" maxlength="40" required value="${esc(v.name)}" placeholder="예: 독서, 영어, 스케치"></label></div>
       <fieldset class="lg-f"><legend>무엇으로 셀까요?</legend>
         ${['minutes', 'count', 'check'].map(u => `<label class="lg-radio"><input type="radio" name="unit" value="${u}" ${v.unit === u ? 'checked' : ''} ${t ? 'disabled' : ''}>${UNIT_KO[u]}</label>`).join('')}
