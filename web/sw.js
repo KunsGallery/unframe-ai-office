@@ -1,5 +1,8 @@
 // Unframe Log 서비스 워커: 앱 설치 + 웹 푸시 알림. 그림 파일만 캐시하고, 나머지는 항상 최신 버전을 받아온다.
 const CACHE = 'office-assets-v2';
+const VERSION = 'push-2';
+// 앱이 진단 화면에서 서비스 워커 버전을 물어본다
+self.addEventListener('message', e => { if (e.data && e.data.type === 'version' && e.ports[0]) e.ports[0].postMessage({ version: VERSION }); });
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())

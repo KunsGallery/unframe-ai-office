@@ -8,7 +8,7 @@ import { firebaseLogStore, demoLogStore } from './log/store.js';
 import { firebaseWorkStore, demoWorkStore } from './log/workstore.js';
 import { initDocs } from './log/docs.js';
 import { initCalendar } from './log/calendar.js';
-import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, isIOS as pushIOS, deviceName } from './push.js';
+import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, deviceName } from './push.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -86,6 +86,7 @@ async function firebaseStore() {
     // 🔔 웹 푸시: 이 기기 구독 저장 + 보내기 (Netlify 함수가 상대 기기로 보냄)
     savePushSub: (id, d) => F.setDoc(F.doc(db, 'pushSubs', id), { ...d, owner: me.id, updatedAt: F.serverTimestamp() }),
     deletePushSub: id => F.deleteDoc(F.doc(db, 'pushSubs', id)),
+    myPushSubs: async () => (await F.getDocs(F.query(F.collection(db, 'pushSubs'), F.where('owner', '==', me.id)))).docs.map(d => ({ id: d.id, device: d.data().device, host: (() => { try { return new URL(d.data().endpoint).host; } catch { return '?'; } })(), kinds: d.data().kinds || [] })),
     sendPush: async p => {
       const res = await fetch('/.netlify/functions/push', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
@@ -236,7 +237,7 @@ function demoStore() {
     onProfiles: cb => { subs.profiles = cb; cb({}); },
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
-    savePushSub: async () => {}, deletePushSub: async () => {},
+    savePushSub: async () => {}, deletePushSub: async () => {}, myPushSubs: async () => [],
     sendPush: async p => { if (p.kind === 'test') localNotify(p.title, p.body, p.tag, p.url); return { sent: p.kind === 'test' ? 1 : 0, demo: true }; },
     workStore: () => demoWorkStore(me.id, other !== MEMBERS[0] ? other.id : null),
     heartbeat: async (status, pos) => {
@@ -635,7 +636,34 @@ async function refreshNotify() {
   const kinds = savedKinds();
   $('notiKinds').innerHTML = Object.entries(KIND_LABEL).map(([k, l]) => `<label class="noti-kind"><input type="checkbox" data-kind="${k}" ${kinds.includes(k) ? 'checked' : ''} ${on ? '' : 'disabled'}> ${l}</label>`).join('');
   $('notiTest').disabled = !on;
+  renderDiag();
   return on;
+}
+// 🔍 알림이 안 올 때 원인을 바로 볼 수 있게 (이 기기 상태 + 서버에 등록된 내 기기)
+let lastTest = '';
+async function renderDiag() {
+  const el = $('notiDiag'); if (!el) return;
+  const perm = 'Notification' in window ? Notification.permission : '지원 안 함';
+  let swTxt = '없음', subHost = '없음', subId = '';
+  try {
+    const r = await navigator.serviceWorker.getRegistration();
+    if (r && r.active) {
+      const v = await new Promise(res => { const ch = new MessageChannel(); ch.port1.onmessage = e => res(e.data && e.data.version); r.active.postMessage({ type: 'version' }, [ch.port2]); setTimeout(() => res(''), 800); });
+      swTxt = v ? '최신 (' + v + ')' : '옛 버전 — 앱을 완전히 닫았다 다시 열어 주세요';
+    }
+    const sub = r && await r.pushManager.getSubscription();
+    if (sub) { subHost = new URL(sub.endpoint).host; subId = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint)).then(h => [...new Uint8Array(h)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('')); }
+  } catch {}
+  let mine = [];
+  try { mine = await store.myPushSubs(); } catch (e) { mine = null; }
+  const permKo = { granted: '허용됨', denied: '차단됨', default: '아직 안 물어봄' }[perm] || perm;
+  el.innerHTML = `<b>🔍 진단</b> <small>(알림이 안 오면 이 내용을 알려 주세요)</small>
+    <div>기기: ${esc(deviceName())} · ${esc(navigator.userAgent.match(/(SamsungBrowser|Chrome|CriOS|Version)\/[\d.]+/)?.[0] || '')}${standalone() ? ' · 앱' : ' · 브라우저 탭'}</div>
+    <div>알림 권한: ${esc(permKo)} · 서비스 워커: ${esc(swTxt)}</div>
+    <div>이 기기 구독: ${esc(subHost)}${subId ? ' · ' + subId.slice(0, 6) : ''}</div>
+    <div>서버에 등록된 내 기기: ${mine === null ? '읽기 실패' : mine.length ? mine.map(d => `${esc(d.device)}(${esc(d.host.split('.').slice(-2).join('.'))}${subId && d.id.endsWith(subId) ? ', 이 기기' : ''})`).join(', ') : '없음'}</div>
+    ${myStatus === 'focus' ? '<div class="warn">지금 내 상태가 🎧 집중이에요 — 집중 중에는 메시지·요청 알림이 오지 않아요</div>' : ''}
+    ${lastTest ? `<div>마지막 테스트: ${esc(lastTest)}</div>` : ''}`;
 }
 async function setNotify(want) {
   if (want) {
@@ -663,8 +691,8 @@ $('notiKinds').addEventListener('change', e => {
   updateKinds(store, me, kinds).then(() => toast('🔔 받을 알림을 바꿨어요')).catch(err => toast('저장하지 못했어요: ' + err.message));
 });
 $('notiTest').onclick = () => store.sendPush({ to: [me.id], kind: 'test', title: '🔔 Unframe Log 테스트', body: '알림이 잘 와요! 이 기기에서 받을 수 있어요.', tag: 'test', url: './#today' })
-  .then(r => toast(r.sent ? `🔔 테스트 알림을 보냈어요 (기기 ${r.sent}대)` : '보낼 기기가 없어요. 알림을 껐다 다시 켜 보세요.'))
-  .catch(e => toast('테스트 알림 실패: ' + e.message));
+  .then(r => { lastTest = r.sent ? `보냄 · 기기 ${r.sent}대에 전달 (${new Date().toLocaleTimeString('ko-KR')}). 몇 초 안에 안 뜨면 휴대폰 알림 설정 문제예요` : `보낼 기기가 없어요 (등록 ${r.devices || 0}대${r.removed ? `, 끊긴 구독 ${r.removed}개 정리` : ''}). 스위치를 껐다 다시 켜 주세요`; toast(r.sent ? `🔔 테스트 알림을 보냈어요 (기기 ${r.sent}대)` : '보낼 기기가 없어요. 알림을 껐다 다시 켜 보세요.'); renderDiag(); })
+  .catch(e => { lastTest = '실패: ' + e.message; toast('테스트 알림 실패: ' + e.message); renderDiag(); });
 refreshNotify();
 // 알림을 누르고 들어왔을 때: 해당 탭으로
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
@@ -674,7 +702,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('mess
  * 상대에게 푸시 보내기. 🎧 집중 중인 사람에게는 메시지·요청 알림을 보내지 않는다 (내 Claude 알림은 자기 기기라 상관없음)
  */
 function pushTo(ids, kind, title, body, tag, url) {
-  const to = ids.filter(id => id && (kind.startsWith('claude') || !(presence[id] && presence[id].status === 'focus')));
+  // 집중 상태는 지금 접속해 있을 때만 존중 (앱을 닫은 뒤 남은 '집중' 때문에 알림이 막히지 않게)
+  const to = ids.filter(id => id && (kind.startsWith('claude') || !(isOnline(id) && presence[id].status === 'focus')));
   if (!to.length || !store || !store.sendPush) return;
   store.sendPush({ to, kind, title, body: String(body || '').slice(0, 240), tag, url }).catch(() => {});
 }
@@ -1238,7 +1267,7 @@ function toastAction(msg, label, fn) {
 //  📲 앱 설치 (홈 화면에 추가)
 // ======================================================================
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update().catch(() => {})).catch(() => {});
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let installEvt = null;

@@ -301,6 +301,9 @@
   .noti-kind input { width: 18px; height: 18px; accent-color: #1f9d55; flex: none; }
   .noti-kind input:disabled + * , .noti-kind:has(input:disabled) { opacity: .5; }
   .noti-help { font-size: 12px !important; }
+  .noti-diag { margin-top: 12px; background: #15121c; border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
+  .noti-diag b { color: var(--text); }
+  .noti-diag .warn { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -591,6 +594,7 @@
   <p>초록색 <b>켜짐</b>이면 이 기기로 알림이 와요. 휴대폰·PC마다 따로 켜야 해요.</p>
   <h4>받을 알림</h4>
   <div id="notiKinds" class="noti-kinds"></div>
+  <div class="noti-diag" id="notiDiag"></div>
   <p class="noti-help">🎧 집중 중일 때는 메시지·요청 알림이 오지 않아요. 아이폰은 Safari에서 <b>공유 → 홈 화면에 추가</b>한 앱에서만 앱을 닫아도 알림이 와요.</p>
   <div class="row">
     <button class="btn" type="button" id="notiTest">테스트 알림 보내기</button>
