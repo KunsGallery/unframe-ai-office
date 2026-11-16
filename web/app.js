@@ -96,6 +96,14 @@ async function firebaseStore() {
       if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
       return j;
     },
+    petChat: async p => {
+      const res = await fetch('/.netlify/functions/pet-chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+      return j;
+    },
     sendPush: async p => {
       const res = await fetch('/.netlify/functions/push', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
@@ -247,6 +255,25 @@ function demoStore() {
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
     savePushSub: async () => {}, deletePushSub: async () => {}, myPushSubs: async () => [],
+    // 데모: 말에 따라 정해진 답 + 제안 (실제로는 Claude가 씀)
+    petChat: async ({ messages, context }) => {
+      await new Promise(r => setTimeout(r, 1100));
+      const q = messages[messages.length - 1].content, h = context.habits || [];
+      const find = re => h.find(x => re.test(x.name));
+      const n = +((/(\d+)\s*(분|쪽|장|잔|km)?/.exec(q) || [])[1] || 0);
+      if (/했어|읽었|마셨|달렸|운동/.test(q)) {
+        const t = /읽|책|독서/.test(q) ? find(/독서/) : /운동|스트레칭/.test(q) ? find(/스트레칭/) : /기타/.test(q) ? find(/기타/) : /글/.test(q) ? find(/글쓰기/) : null;
+        if (t) return { reply: `우와, 잘했어요 멍! 🐾 ${t.name} 기록으로 남길까요? 적용을 누르면 바로 저장할게요.`, actions: [{ type: 'log', tracker: t.id, amount: t.unit === '했다/안 했다' ? 1 : (n || 30), day: '', time: '', title: '', score: 0 }] };
+      }
+      if (/미팅|회의|약속|넣어/.test(q)) {
+        const d = new Date(); if (/내일/.test(q)) d.setDate(d.getDate() + 1);
+        const day = d.toISOString().slice(0, 10), hh = /오후\s*(\d+)/.exec(q), time = hh ? String(+hh[1] + 12).padStart(2, '0') + ':00' : '';
+        return { reply: `일정으로 넣어 둘게요! 적용을 누르면 캘린더에 들어가요 📅`, actions: [{ type: 'event', tracker: '', amount: 0, day, time, title: /회의/.test(q) ? '회의' : '미팅', score: 0 }] };
+      }
+      if (/일정/.test(q)) return { reply: context.events.length ? `이번 주 일정은 ${context.events.slice(0, 3).map(e => `${e.day.slice(5)} ${e.time} ${e.title}`).join(', ')}이에요.` : '이번 주는 일정이 비어 있어요. 여유롭게 가요!', actions: [] };
+      const left = h.filter(x => x.today < Math.max(1, x.goal));
+      return { reply: left.length ? `오늘은 ${left.slice(0, 2).map(x => x.name).join(', ')}부터 해 볼까요? ${left[0].streak ? `🔥${left[0].streak}일 연속이 걸려 있어요!` : '조금만 해도 충분해요.'}${context.tasks.length ? ` 그리고 할 일 「${context.tasks[0].text}」도 잊지 마요.` : ''}` : '오늘 습관은 다 했어요! 최고예요 멍 ✨', actions: [] };
+    },
     petNow: async slot => {
       await new Promise(r => setTimeout(r, 900));
       const text = { brief: '좋은 아침이에요 멍! ☀️ 오늘 기분은 어때요? 서울 맑음, 2~12°C. 오후 2시 운영 회의가 있어요.', lunch: '점심은 뭐 먹었어요 멍? 🍱 오후도 같이 힘내요!', due: '마감 지난 할 일이 1개 있어요: 오후 3시 배포. 같이 챙겨요 🐾', evening: '오늘 📖 독서 아직이에요! 🔥29일 연속, 오늘도 이어가요 멍.' }[slot];
@@ -1348,7 +1375,10 @@ function startLog() {
   const petHooks = { moodOf: (id, d) => (petUi ? petUi.moodFor(id, d) : null), moodEmoji, moods: () => (petUi ? petUi.moods() : []) };
   logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab, ...petHooks, afterToday: () => petUi && petUi.renderSlot() });
   petUi = initPet({ work, me, toast, petNow: slot => store.petNow(slot), changed: () => { if (currentTab === 'today') logUi.show('today'); calUi && calUi.refresh(); },
-    petInfo: m => { const l = look(m); return { kind: l.pet, name: PET_KO[l.pet] ? petNameOf(m, l) : `${m.name}의 비서`, img: PET_KO[l.pet] ? office.petPreview(l.pet) : '' }; } });
+    petInfo: m => { const l = look(m); return { kind: l.pet, ko: PET_KO[l.pet] || '비서', name: PET_KO[l.pet] ? petNameOf(m, l) : `${m.name}의 비서`, img: PET_KO[l.pet] ? office.petPreview(l.pet) : '' }; },
+    petChat: p => store.petChat(p), logs: logUi, logStore, nameOf,
+    events: () => (calUi ? calUi.events() : []), tasks: () => boardItems,
+    addTask: (text, due) => store.addBoard(text, me.id, due) });
   docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
   calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems, ...petHooks,
     notifyOthers: (title, body, tag) => pushTo(MEMBERS.filter(m => m.id !== me.id).map(m => m.id), 'event', title, body, tag, './#calendar') });

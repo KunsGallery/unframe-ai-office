@@ -10,7 +10,10 @@ const WD = ['일', '월', '화', '수', '목', '금', '토'];
 export const fmtDate = k => { const d = parseDay(k); return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일`; };
 
 export const UNIT_KO = { minutes: '시간(분)', count: '횟수·개수', check: '했다/안 했다' };
-export const COLORS = ['#1f3fbf', '#e4572e', '#17a673', '#f0a202', '#8e44ad', '#111111'];
+// 어두운 AI 테마에서 잘 보이는 색. 예전 색으로 저장된 습관은 vivid()로 바꿔 보여준다
+export const COLORS = ['#8b9cff', '#fb7185', '#34d399', '#fbbf24', '#c084fc', '#67e8f9'];
+const OLD_COLORS = { '#1f3fbf': '#8b9cff', '#e4572e': '#fb7185', '#17a673': '#34d399', '#f0a202': '#fbbf24', '#8e44ad': '#c084fc', '#111111': '#67e8f9' };
+export const vivid = c => OLD_COLORS[String(c || '').toLowerCase()] || c || '#8b9cff';
 export const STEPS = { minutes: [5, 10, 15, 30], count: [1, 5], check: [1] };
 
 const nf = n => Math.round(n).toLocaleString('ko-KR');

@@ -7,7 +7,7 @@
 - Firebase 프로젝트 `unframe-ai-office` (Firestore 서울, Google 로그인). 규칙 게시: `npx firebase-tools deploy --only firestore:rules --project unframe-ai-office` (이 PC의 Firebase CLI는 재우님 계정으로 로그인됨).
 - Netlify 환경변수 `ANTHROPIC_API_KEY`(시크릿) 설정됨 → `netlify/functions/summarize.mjs`가 Claude Opus 5.5로 업무일지 요약.
 - 🔔 웹 푸시: `netlify/functions/push.mjs`(Netlify 환경변수 `VAPID_PRIVATE_KEY` 필요, 공개 키는 `web/push-config.js`). 기기 구독은 Firestore `pushSubs`, 함수는 보내는 사람의 ID 토큰으로 Firestore REST를 읽음(서비스 계정 없음). 훅도 내 Claude 승인 대기·완료를 이 함수로 보냄. 서비스 워커 `web/sw.js`에 push/notificationclick.
-- 🐾 펫 비서: Netlify 예약 함수 `pet-assistant.mjs`(10분마다, KST 기준 각자 시간 + 50분 창, `petNotes/{멤버}__{날짜}__{slot}` 먼저 만들어 중복 방지) + `pet-now.mjs`(지금 받아 보기). 서버는 Netlify 환경변수 `FIREBASE_SERVICE_ACCOUNT`(서비스 계정 JSON)로 Firestore REST를 읽음(`netlify/lib/gauth.mjs`), 글은 Claude Haiku 5.5(`netlify/lib/pet.mjs`, 실패 시 정해진 문구), 날씨는 Open-Meteo. 화면은 `web/log/pet.js`.
+- 🐾 펫 비서: Netlify 예약 함수 `pet-assistant.mjs`(10분마다, KST 기준 각자 시간 + 50분 창, `petNotes/{멤버}__{날짜}__{slot}` 먼저 만들어 중복 방지) + `pet-now.mjs`(지금 받아 보기). 서버는 Netlify 환경변수 `FIREBASE_SERVICE_ACCOUNT`(서비스 계정 JSON)로 Firestore REST를 읽음(`netlify/lib/gauth.mjs`), 글은 Claude Opus 5.5 effort low(`netlify/lib/pet.mjs`, 실패 시 정해진 문구). 💬 펫과 대화: `pet-chat.mjs`(앱이 보낸 내 자료로 답 + 기록·일정·할 일·기분 제안 → 화면에서 적용 눌러야 저장), 날씨는 Open-Meteo. 화면은 `web/log/pet.js`.
 
 ## 꼭 지킬 것
 - **저장소가 공개.** 멤버 이메일이 든 `members.json`, `firestore.rules`는 .gitignore — 절대 커밋 금지. 커밋 전 `git grep --cached -l -F -f <(node -e 'require("./members.json").forEach(m=>console.log(m.email))')` 결과가 비어 있는지 확인.

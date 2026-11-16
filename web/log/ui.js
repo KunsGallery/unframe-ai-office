@@ -1,7 +1,7 @@
 // Unframe Log 화면: 오늘 / 내 기록 / 성취 (+ 축하 화면, 습관 만들기)
 import {
   dayKey, fmtDate, bigParts, fmtAmount, goalOf, indexLogs, statsFor, achievements, paceDefaults, paceResult,
-  STEPS, COLORS, UNIT_KO, num, num1, daysInYear, dayOfYear,
+  STEPS, COLORS, UNIT_KO, num, num1, daysInYear, dayOfYear, vivid,
 } from './model.js';
 import { yearGrid, yearRing, monthBars } from './charts.js';
 import { openReport } from './report.js';
@@ -26,7 +26,7 @@ export function initLog(ctx) {
   const theirs = id => trackers.filter(t => t.owner === id && !t.archived && !t.private).sort((a, b) => (a.order || 0) - (b.order || 0));
   const S = t => statsFor(t, byT.get(t.id), dayKey());
 
-  store.onTrackers(list => { trackers = list; tLoaded = true; changed(); }, e => toast('습관을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
+  store.onTrackers(list => { trackers = list.map(t => ({ ...t, color: vivid(t.color) })); tLoaded = true; changed(); }, e => toast('습관을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
   store.onLogs(list => { logs = list; byT = indexLogs(logs); lLoaded = true; changed(); }, e => toast('기록을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
 
   function changed() { render(); checkAchievements(); if (tLoaded && lLoaded) listeners.forEach(fn => fn()); }
@@ -74,7 +74,7 @@ export function initLog(ctx) {
     const btns = t.unit === 'check'
       ? `<button class="lg-do${s.todayAmt > 0 ? ' on' : ''}" data-act="check" type="button">${s.todayAmt > 0 ? '✓ 했어요' : '했어요'}</button>`
       : STEPS[t.unit].map(n => `<button class="lg-step" data-add="${n}" type="button">+${n}</button>`).join('') + `<button class="lg-step lg-more" data-act="custom" type="button" aria-label="직접 입력">…</button>`;
-    return `<article class="lg-card${s.todayMet ? ' met' : ''}" data-id="${t.id}" style="--c:${esc(t.color || '#1f3fbf')}">
+    return `<article class="lg-card${s.todayMet ? ' met' : ''}" data-id="${t.id}" style="--c:${esc(t.color || '#8b9cff')}">
       <header><button class="lg-name" data-act="open" type="button"><span class="lg-emo">${esc(t.emoji || '•')}</span>${esc(t.name)}${t.private ? ' <small title="나만 보기">🔒</small>' : ''}</button>
         ${s.streak ? `<span class="lg-streak" title="연속 기록">🔥 ${s.streak}일</span>` : '<span class="lg-streak"></span>'}<button class="lg-ico" data-act="note" type="button" aria-label="오늘 한마디">✎</button></header>
       <div class="lg-amt">${t.unit === 'check'
@@ -94,14 +94,14 @@ export function initLog(ctx) {
     return `<section class="lg-partner">
       <div class="lg-ph"><img alt="" src="${avatar(m)}"><b>${esc(m.name)}님</b> <span class="lg-pn">${met}/${list.length} 완료</span>${top ? ` <span class="lg-streak">🔥${top}일</span>` : ''}${mood && mood.score ? ` <span class="lg-pmood" title="오늘 기분">${ctx.moodEmoji(mood.score)}</span>` : ''}</div>
       ${mood && (mood.note || mood.lunch) ? `<p class="lg-pnote">${mood.note ? `“${esc(mood.note)}”` : ''}${mood.lunch ? ` 🍱 ${esc(mood.lunch)}` : ''}</p>` : ''}
-      <ul>${list.map((t, i) => `<li class="${st[i].todayMet ? 'met' : ''}" style="--c:${esc(t.color || '#1f3fbf')}"><span>${esc(t.emoji || '•')} ${esc(t.name)}</span><b>${st[i].todayAmt ? esc(fmtAmount(t, st[i].todayAmt)) : '—'}</b></li>`).join('')}</ul>
+      <ul>${list.map((t, i) => `<li class="${st[i].todayMet ? 'met' : ''}" style="--c:${esc(t.color || '#8b9cff')}"><span>${esc(t.emoji || '•')} ${esc(t.name)}</span><b>${st[i].todayAmt ? esc(fmtAmount(t, st[i].todayAmt)) : '—'}</b></li>`).join('')}</ul>
     </section>`;
   }
   const TEMPLATES = [
-    { name: '독서', emoji: '📖', unit: 'count', unitLabel: '쪽', dailyGoal: 20, color: '#1f3fbf' },
-    { name: '운동', emoji: '🏃', unit: 'minutes', unitLabel: '', dailyGoal: 30, color: '#e4572e' },
-    { name: '물 마시기', emoji: '💧', unit: 'count', unitLabel: '잔', dailyGoal: 8, color: '#17a673' },
-    { name: '일기', emoji: '📓', unit: 'check', unitLabel: '', dailyGoal: 1, color: '#111111' },
+    { name: '독서', emoji: '📖', unit: 'count', unitLabel: '쪽', dailyGoal: 20, color: '#8b9cff' },
+    { name: '운동', emoji: '🏃', unit: 'minutes', unitLabel: '', dailyGoal: 30, color: '#fb7185' },
+    { name: '물 마시기', emoji: '💧', unit: 'count', unitLabel: '잔', dailyGoal: 8, color: '#34d399' },
+    { name: '일기', emoji: '📓', unit: 'check', unitLabel: '', dailyGoal: 1, color: '#67e8f9' },
   ];
   function emptyToday() {
     return `<section class="lg-sec light lg-hero">
@@ -209,7 +209,7 @@ export function initLog(ctx) {
         <p class="lg-lede">${t.unit === 'check' ? `${year}년에 <b>${num(s.yearDays)}일</b> 했어요` : `${year}년에 쌓인 양`}. 처음부터 모두 합치면 <b>${life.num}${esc(life.unit)}</b>${s.first ? `, 첫 기록은 ${s.first.replaceAll('-', '.')}` : ''}.</p>
         <div class="lg-yearhead"><button class="lg-yr" data-year="-1" type="button" aria-label="이전 해">‹</button><b>${year}</b><button class="lg-yr" data-year="1" type="button" aria-label="다음 해" ${year >= thisYear ? 'disabled' : ''}>›</button>
           <span class="lg-of365">${yDays}일 가운데 <b>${num(s.yearDays)}일</b></span></div>
-        ${yearGrid({ year, days, goal: s.goal, color: t.color || '#1f3fbf', today })}
+        ${yearGrid({ year, days, goal: s.goal, color: t.color || '#8b9cff', today })}
         <div class="lg-legend"><span>적게</span>${[1, 2, 3, 4].map(l => `<i style="opacity:${[0, .35, .55, .78, 1][l]}"></i>`).join('')}<span>${s.goal ? '목표 이상' : '많이'}</span></div>
         <div class="lg-stats">
           <div><b>${num(s.streak)}</b><span>일 연속 중</span></div>
@@ -226,7 +226,7 @@ export function initLog(ctx) {
       <section class="lg-sec dark" id="lgCalc">${calcHtml(t)}</section>
       <section class="lg-sec light">
         <div class="lg-kicker">${year}년 월별</div>
-        ${monthBars({ values: monthVals, color: t.color || '#1f3fbf', fmt: fmtV, current: year === thisYear ? new Date().getMonth() : -1 })}
+        ${monthBars({ values: monthVals, color: t.color || '#8b9cff', fmt: fmtV, current: year === thisYear ? new Date().getMonth() : -1 })}
         <div class="lg-actions">
           <button class="lg-btn" data-act="edit" type="button">✎ 습관 고치기</button>
           <button class="lg-btn" data-act="archive" type="button">${t.archived ? '📦 보관 해제' : '📦 보관하기'}</button>
@@ -306,7 +306,7 @@ export function initLog(ctx) {
       <section class="lg-sec light tight"><div class="lg-kicker">모은 업적</div>
         ${earned.length ? `<ul class="lg-badges">${[...earned].reverse().map(a => {
           const t = trackers.find(x => x.id === a.tracker);
-          return `<li style="--c:${esc((t && t.color) || '#1f3fbf')}"><b>${esc(a.big)}</b><span class="u">${esc(a.unit)}</span><small>${esc(a.kind === 'first' ? `${a.tag} · ${a.day.replaceAll('-', '.')}` : a.tag)}</small></li>`;
+          return `<li style="--c:${esc((t && t.color) || '#8b9cff')}"><b>${esc(a.big)}</b><span class="u">${esc(a.unit)}</span><small>${esc(a.kind === 'first' ? `${a.tag} · ${a.day.replaceAll('-', '.')}` : a.tag)}</small></li>`;
         }).join('')}</ul>` : '<p class="lg-lede">첫 기록을 남기면 첫 업적이 생겨요.</p>'}
       </section>`;
   }

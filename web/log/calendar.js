@@ -144,5 +144,6 @@ export function initCalendar(ctx) {
   return {
     show(tab) { visible = tab === 'calendar'; if (visible) render(); },
     refresh() { if (visible) render(); },
+    events: () => events,
   };
 }

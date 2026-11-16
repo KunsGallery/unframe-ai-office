@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Unframe Log</title>
-<meta name="theme-color" content="#111114">
+<meta name="theme-color" content="#0b0b12">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Unframe Log">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="log/log.css">
 <style>
@@ -242,16 +242,16 @@
   .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #2f2742; border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; font-size: 13px; z-index: 60; max-width: calc(100vw - 32px); }
   .toast[hidden] { display: none; }
   /* 상단 바 + 탭 (Unframe Log) */
-  header.topbar { background: #111114; color: #f3f1ec; border-bottom: 0; padding: 10px 20px; gap: 10px 16px; position: sticky; top: 0; z-index: 30; flex-wrap: nowrap; }
-  .brand { font: 600 19px "Oswald", sans-serif !important; letter-spacing: .02em !important; text-transform: uppercase; white-space: nowrap; }
-  .brand span { color: #8ea0ff; }
+  header.topbar { background: rgba(11, 11, 18, .78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid rgba(255, 255, 255, .07) !important; color: #f3f1ec; border-bottom: 0; padding: 10px 20px; gap: 10px 16px; position: sticky; top: 0; z-index: 30; flex-wrap: nowrap; }
+  .brand { font: 700 18px "Space Grotesk", sans-serif !important; letter-spacing: -.01em !important; white-space: nowrap; }
+  .brand span { background: linear-gradient(120deg, #8b9cff, #c084fc 50%, #67e8f9); -webkit-background-clip: text; background-clip: text; color: transparent; }
   header.topbar .sub { font-size: 12px; color: #9a98a0; white-space: nowrap; }
   .tabbar { display: flex; gap: 2px; margin: 0 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   @media (min-width: 761px) and (max-width: 1100px) { .tabbar button { padding: 8px 9px; } .tabbar i { display: none; } header.topbar .sub { display: none; } }
   .tabbar button { background: none; border: 0; color: #b9b7bf; padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; position: relative; white-space: nowrap; }
   .tabbar button i { font-style: normal; font-size: 11px; opacity: .7; }
   .tabbar button:hover { color: #fff; }
-  .tabbar button[aria-current="page"] { background: #f3f1ec; color: #111114; }
+  .tabbar button[aria-current="page"] { background: rgba(139, 156, 255, .16); color: #fff; box-shadow: inset 0 0 0 1px rgba(139, 156, 255, .45), 0 0 18px -6px rgba(139, 156, 255, .8); }
   .tabbar .badge { position: absolute; top: -2px; right: -4px; }
   .headright { display: flex; align-items: center; gap: 10px; }
   .headright .me span { display: none; }
@@ -266,9 +266,10 @@
   .together-head .sub { color: var(--muted); font-size: 13px; }
   .together-head .btn { margin-left: auto; align-self: center; }
   @media (max-width: 760px) {
-    header.topbar { padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top)); }
+    /* 흐림 효과가 있으면 안쪽의 고정(fixed) 탭 바가 헤더에 갇힌다 → 휴대폰에선 끈다 */
+    header.topbar { padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top)); backdrop-filter: none; -webkit-backdrop-filter: none; background: #0b0b12; }
     header.topbar .sub { display: none; }
-    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; background: #111114; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; border-top: 1px solid #2a2a30; }
+    .tabbar { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; background: rgba(11, 11, 18, .86); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; border-top: 1px solid #2a2a30; }
     .tabbar { justify-content: stretch; }
     .tabbar button { flex: 1 1 0; flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 0; min-width: 0; border-radius: 12px; }
     .tabbar .long { display: none; }

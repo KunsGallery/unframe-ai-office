@@ -106,10 +106,11 @@ async function write(slot, member, d, s) {
 ${s.style ? `${member.name}님이 원하는 말투·스타일: ${s.style}` : ''}`;
   const data = { 지금: `${d.today} (${d.weekday})`, 날씨: d.weather, 오늘일정: d.events, 마감할일: d.due, 남은할일수: d.openTasks, 습관: d.habits, 오늘기분: d.moodToday, 어제기분: d.moodYesterday, 오늘점심: d.lunch };
   try {
-    const msg = await client.messages.create({
-      model: 'claude-haiku-5-5', max_tokens: 400, system: sys,
+    const msg = await client.beta.messages.create({
+      model: 'claude-opus-5-5', max_tokens: 1500, system: sys,
+      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', output_config: { effort: 'low' },
       messages: [{ role: 'user', content: `할 일: ${TASK[slot]}\n<data>\n${JSON.stringify(data)}\n</data>` }],
-    }, { timeout: 15000 });
+    }, { timeout: 20000 });
     const text = msg.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().replace(/^["“]|["”]$/g, '');
     return text && msg.stop_reason !== 'refusal' ? text.slice(0, 220) : fallback(slot, d);
   } catch { return fallback(slot, d); }

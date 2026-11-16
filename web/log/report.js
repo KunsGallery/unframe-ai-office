@@ -90,33 +90,37 @@ export function openReport(period, { trackers, byT, earned, toast, moods }) {
 }
 
 // ---------- 이미지 (1080 × 1920, 세 가지 톤) ----------
-const DISPLAY = '"Oswald", "Pretendard Variable", Pretendard, sans-serif';
+const DISPLAY = '"Space Grotesk", "Pretendard Variable", Pretendard, sans-serif';
 const BODY = '"Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", sans-serif';
 async function saveImage(sum, pace, earned, period, mood) {
   const texts = [sum.label, ...sum.rows.map(r => r.t.name + r.parts.unit), pace ? pace.a + pace.then + pace.note : '', '가운데 무언가를 기록한 날 무엇을 쌓았나 이 속도면 업적 일 연속 최장'].join(' ');
-  await Promise.all([document.fonts.load(`600 200px Oswald`, '0123456789,.'), document.fonts.load(`700 40px "Pretendard Variable"`, texts)]).catch(() => {});
+  await Promise.all([document.fonts.load(`600 200px "Space Grotesk"`, '0123456789,.'), document.fonts.load(`700 40px "Pretendard Variable"`, texts)]).catch(() => {});
   const W = 1080, H = 1920, c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   const band = (y, h, bg) => { g.fillStyle = bg; g.fillRect(0, y, W, h); };
+  // ✨ AI 테마: 오로라 빛 + 그라데이션 글자
+  const glow = (x, y, r, color) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, color); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+  const gradText = (x0, x1) => { const lg = g.createLinearGradient(x0, 0, x1, 0); lg.addColorStop(0, '#8b9cff'); lg.addColorStop(.5, '#c084fc'); lg.addColorStop(1, '#67e8f9'); return lg; };
   const text = (s, x, y, font, color, align = 'left') => { g.font = font; g.fillStyle = color; g.textAlign = align; g.fillText(s, x, y); return g.measureText(s).width; };
   const P = 84;
   // 1) 밝음
-  band(0, 640, '#f3f1ec');
-  text(`UNFRAME LOG · ${sum.label}`, P, 120, `600 34px ${BODY}`, '#1f3fbf');
-  const w1 = text(num(sum.active.size), P - 6, 380, `600 260px ${DISPLAY}`, '#111');
-  text('일', P + w1 + 10, 380, `700 64px ${BODY}`, '#111');
-  text(`${sum.keys.length}일 가운데 무언가를 기록한 날${mood ? ` · 가장 많았던 기분 ${mood.top}` : ''}`, P, 450, `500 36px ${BODY}`, '#555');
+  band(0, 1920, '#0b0b12');
+  glow(120, 40, 620, 'rgba(124,92,255,.45)'); glow(1000, 200, 520, 'rgba(34,211,238,.18)');
+  text(`✦ UNFRAME LOG · ${sum.label}`, P, 120, `600 34px ${BODY}`, '#b9c2ff');
+  const w1 = text(num(sum.active.size), P - 6, 380, `700 260px ${DISPLAY}`, gradText(P, P + 520));
+  text('일', P + w1 + 10, 380, `700 64px ${BODY}`, '#eef0ff');
+  text(`${sum.keys.length}일 가운데 무언가를 기록한 날${mood ? ` · 가장 많았던 기분 ${mood.top}` : ''}`, P, 450, `500 36px ${BODY}`, '#9ba1c6');
   // 점
   const n = sum.keys.length, cols = period.kind === 'month' ? 16 : 31, gap = (W - P * 2) / cols, r = period.kind === 'month' ? 14 : 6.5;
   sum.keys.forEach((k, i) => {
     const x = P + gap * (i % cols) + gap / 2, y = 510 + Math.floor(i / cols) * (period.kind === 'month' ? 44 : 9.5) + r;
     if (period.kind === 'year' && y > 630) return;
     g.beginPath(); g.arc(x, y, sum.active.has(k) ? r : r * 0.45, 0, Math.PI * 2);
-    g.fillStyle = sum.active.has(k) ? '#1f3fbf' : '#c9c5bb'; g.fill();
+    g.fillStyle = sum.active.has(k) ? '#8b9cff' : 'rgba(255,255,255,.12)'; g.fill();
   });
   // 2) 파랑
-  band(640, 700, '#1f3fbf');
+  { const lg = g.createLinearGradient(0, 640, W, 1340); lg.addColorStop(0, '#312a8a'); lg.addColorStop(.55, '#5b21b6'); lg.addColorStop(1, '#0e6a86'); band(640, 700, lg); glow(980, 660, 420, 'rgba(103,232,249,.25)'); }
   text('무엇을 쌓았나', P, 730, `600 34px ${BODY}`, 'rgba(255,255,255,.75)');
   sum.rows.slice(0, 4).forEach((row, i) => {
     const y = 870 + i * 130;
@@ -127,13 +131,13 @@ async function saveImage(sum, pace, earned, period, mood) {
   });
   if (!sum.rows.length) text('이 기간에는 기록이 없어요', P, 900, `500 40px ${BODY}`, '#fff');
   // 3) 어두움
-  band(1340, 580, '#0e0e10');
-  text('이 속도면', P, 1430, `600 34px ${BODY}`, '#7f95ff');
+  band(1340, 580, '#07070c'); glow(960, 1920, 560, 'rgba(34,211,238,.2)');
+  text('✦ 이 속도면', P, 1430, `600 34px ${BODY}`, '#a5f3fc');
   if (pace) {
     text(`${pace.r.t.emoji || ''} ${pace.r.t.name} · ${pace.a} ${pace.b}`, P, 1500, `500 36px ${BODY}`, 'rgba(255,255,255,.8)');
-    const w3 = text(pace.eq, P - 6, 1710, `600 220px ${DISPLAY}`, '#fff');
+    const w3 = text(pace.eq, P - 6, 1710, `700 220px ${DISPLAY}`, gradText(P, P + 600));
     text(pace.unit, P + w3 + 10, 1710, `700 60px ${BODY}`, '#fff');
-    text(pace.then, P, 1790, `600 40px ${BODY}`, '#7f95ff');
+    text(pace.then, P, 1790, `600 40px ${BODY}`, '#a5f3fc');
   }
   text(`업적 ${earned.length}개 · unframe-office.netlify.app`, P, 1870, `400 26px ${BODY}`, 'rgba(255,255,255,.45)');
 
