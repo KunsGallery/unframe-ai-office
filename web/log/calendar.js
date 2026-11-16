@@ -19,7 +19,18 @@ export function initCalendar(ctx) {
   try { hide = new Set(JSON.parse(localStorage.getItem('unframe-cal-hide') || '[]')); } catch {}
   const saveHide = () => { try { localStorage.setItem('unframe-cal-hide', JSON.stringify([...hide])); } catch {} };
 
-  work.onEvents(list => { events = list; if (visible) render(); }, e => toast('일정을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
+  let evLoaded = false;
+  work.onEvents(list => {
+    // 🔔 알림센터: 상대가 새로 넣은 일정 (처음 불러온 것 제외)
+    if (evLoaded && ctx.inbox) {
+      const prev = new Set(events.map(e => e.id));
+      for (const e of list) if (!prev.has(e.id) && e.owner !== me.id) {
+        const when = e.endDay && e.endDay > e.day ? `${fmtDate(e.day)} ~ ${fmtDate(e.endDay)}` : fmtDate(e.day) + (e.time ? ' ' + e.time : '');
+        ctx.inbox({ title: `📅 ${nameOf(e.owner)}님이 ${CALS[e.cal] ? CALS[e.cal].name + ' ' : ''}일정을 넣었어요`, body: `${when} · ${e.title}`, tag: 'event-' + e.id, url: './#calendar' });
+      }
+    }
+    events = list; evLoaded = true; if (visible) render();
+  }, e => toast('일정을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
   logs.onChange(() => { if (visible) render(); });
 
   // 기간 일정: endDay가 day보다 뒤면 그 사이 모든 날에 보인다 (전시처럼)

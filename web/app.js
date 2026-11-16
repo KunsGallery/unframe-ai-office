@@ -10,6 +10,7 @@ import { initDocs } from './log/docs.js';
 import { initCalendar } from './log/calendar.js';
 import { initPet, moodEmoji } from './log/pet.js';
 import './log/emoji.js';   // data-emoji-picker 칸을 누르면 이모지 창
+import { initInbox, inboxAdd } from './inbox.js';
 import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, deviceName } from './push.js';
 
 const $ = id => document.getElementById(id);
@@ -458,7 +459,7 @@ function checkLongWaits() {
       if (mins >= th && !renotified.has(key)) {
         renotified.add(key);
         chime('wait');
-        notify(`⏰ Claude가 ${mins}분째 승인을 기다려요`, `${s.project} · ${s.detail || ''}`);
+        notify(`⏰ Claude가 ${mins}분째 승인을 기다려요`, `${s.project} · ${s.detail || ''}`, 'claude-wait-' + s.id, './#office');
         toast(`⏰ ${s.project}: Claude가 ${mins}분째 승인을 기다리고 있어요.`);
       }
     }
@@ -584,9 +585,10 @@ function startChat() {
 
 function onNewMessage(c, x) {
   office.say(nameOf(x.from), x.text);     // 보낸 사람 캐릭터 머리 위 말풍선
-  if (x.from === me.id || quiet()) return;
-  chime('msg');
-  if (document.hidden || c.id !== active) notify(`💬 ${nameOf(x.from)}`, x.text, 'chat-' + c.id, './#together');
+  if (x.from === me.id) return;
+  const looking = !document.hidden && c.id === active && currentTab === 'together';
+  if (!quiet()) chime('msg');
+  if (!looking) notify(`💬 ${nameOf(x.from)}`, x.text, 'chat-' + c.id, './#together', quiet());
 }
 
 function unread(c) { const r = getRead(c.id); return c.msgs.filter(x => x.from !== me.id && x.at > r).length; }
@@ -794,8 +796,10 @@ function chime(kind) {
   }
 }
 // 열려 있는 페이지가 띄우는 알림. 푸시와 같은 tag를 쓰면 같은 알림이 두 번 뜨지 않고 하나로 합쳐진다
-function notify(title, body, tag, url) {
-  if (!notifyOn || !document.hidden) return;
+// 알림센터에는 늘 남기고, 휴대폰/PC 알림은 창을 안 보고 있을 때만. silent: 집중 모드 등으로 소리·팝업 없이 기록만
+function notify(title, body, tag, url, silent) {
+  inboxAdd({ title, body, tag: tag || '', url: url || '' });
+  if (silent || !notifyOn || !document.hidden) return;
   localNotify(title, body, tag || title, url);
 }
 
@@ -811,7 +815,8 @@ function startBoard() {
       const prev = new Map(boardItems.map(x => [x.id, x.assignee]));
       for (const x of items) if (x.assignee === me.id && prev.get(x.id) !== me.id && x.by !== me.id && !x.done) {
         toast(`📋 ${nameOf(x.by)}님이 할 일을 맡겼어요: ${x.text}`);
-        if (!quiet()) { chime('msg'); notify('📋 새로 맡은 일', x.text, 'board-' + x.text.slice(0, 40), './#together'); }
+        if (!quiet()) chime('msg');
+        notify(`📋 ${nameOf(x.by)}님이 할 일을 맡겼어요`, x.text, 'board-' + x.id, './#together', quiet());
       }
     }
     boardItems = items; boardLoaded = true; renderBoard();
@@ -901,7 +906,7 @@ function startRequests() {
     if (reqLoaded) for (const r of list) {
       if (r.to === me.id && r.status === 'open' && !prev.has(r.id)) {
         if (!quiet()) chime('wait');
-        if (!quiet()) notify(`🙋 ${nameOf(r.from)}님의 확인 요청`, r.text, 'req-' + r.text.slice(0, 40), './#together');
+        notify(`🙋 ${nameOf(r.from)}님의 확인 요청`, r.text, 'req-' + r.text.slice(0, 40), './#together', quiet());
         toast(`🙋 ${nameOf(r.from)}님이 확인을 요청했어요: ${r.text}`);
       }
       if (r.from === me.id && prev.get(r.id) === 'open' && (r.status === 'ok' || r.status === 'changes')) {
@@ -1391,6 +1396,8 @@ function togetherBadge() {
 $('moreBtn').onclick = e => { e.stopPropagation(); const open = $('tools').hidden; $('tools').hidden = !open; $('moreBtn').setAttribute('aria-expanded', open); };
 document.addEventListener('click', e => { if (!$('tools').hidden && !e.target.closest('#tools, #moreBtn')) { $('tools').hidden = true; $('moreBtn').setAttribute('aria-expanded', 'false'); } });
 function startLog() {
+  // 🔔 알림센터 (프로필 옆)
+  initInbox({ meId: me.id, host: document.querySelector('header.topbar .headright'), before: $('me'), onGo: url => showTab((String(url).split('#')[1] || 'today')) });
   // 업적 축하를 한 번만 보이려고 본 업적 id를 profiles에 남긴다 (생김새 값도 같이 써야 규칙을 통과)
   const saveSeen = ids => { const l = look(me); return store.saveProfile({ char: l.char, hue: l.hue, claudeChar: l.claudeChar, claudeHue: l.claudeHue, claudeName: l.claudeName, pet: l.pet, petName: l.petName, seenAchievements: ids.slice(-400) }); };
   const logStore = store.logStore(), work = store.workStore();
@@ -1403,10 +1410,10 @@ function startLog() {
     events: () => (calUi ? calUi.events() : []), tasks: () => boardItems,
     addTask: (text, due) => store.addBoard(text, me.id, due),
     petApi: b => store.petApi(b), refreshToken: () => store.refreshToken(), achCount: () => logUi.achCount(),
-    notify: (ids, kind, title, body, tag, url) => pushTo(ids, kind, title, body, tag, url),
+    notify: (ids, kind, title, body, tag, url) => pushTo(ids, kind, title, body, tag, url), inbox: inboxAdd,
     onFeed: () => office.petHeart(me.id), onLevels: () => applyProfiles() });
   docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
-  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems, ...petHooks,
+  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems, ...petHooks, inbox: inboxAdd,
     notifyOthers: (title, body, tag) => pushTo(MEMBERS.filter(m => m.id !== me.id).map(m => m.id), 'event', title, body, tag, './#calendar') });
   logUi.onChange(() => applyProfiles());   // 기록이 바뀌면 오피스 펫 레벨도
   showTab(location.hash.slice(1) || 'today', { push: false });

@@ -21,7 +21,14 @@ export function initPet(ctx) {
     if (notesDay === d) return;
     notesDay = d;
     if (typeof unsubNotes === 'function') unsubNotes();
-    unsubNotes = work.onPetNotes(d, list => { notes = list.filter(n => n.text).sort((a, b) => (a.at || 0) - (b.at || 0)); renderSlot(); });
+    let first = true;
+    unsubNotes = work.onPetNotes(d, list => {
+      const prev = new Set(notes.map(n => n.id));
+      notes = list.filter(n => n.text).sort((a, b) => (a.at || 0) - (b.at || 0));
+      // 🔔 알림센터: 처음 불러온 것 말고 새로 온 펫 비서 말만
+      if (!first && ctx.inbox) for (const n of notes) if (!prev.has(n.id)) ctx.inbox({ title: `🐾 ${petInfo(me).name}`, body: n.text, tag: 'pet-' + (n.slot || n.id), url: './#today' });
+      first = false; renderSlot();
+    });
   }
 
   const moodFor = (id, day = dayKey()) => moods.find(m => m.owner === id && m.day === day) || null;
@@ -366,8 +373,15 @@ export function initPet(ctx) {
   work.getAssistant().then(a => { settings = { ...DEFAULTS, ...(a || {}) }; }).catch(() => { settings = { ...DEFAULTS }; });
   work.onMoods(list => { moods = list; renderSlot(); ctx.changed && ctx.changed(); }, () => {});
   watchNotes();
-  work.onLetters(list => { letters = list; renderAchExtra(); });
-  work.onCheers(list => { cheers = list; renderSlot(); ctx.changed && ctx.changed(); });
+  let lettersLoaded = false, cheersLoaded = false;
+  work.onLetters(list => {
+    if (lettersLoaded && ctx.inbox) { const prev = new Set(letters.map(l => l.id)); for (const l of list) if (!prev.has(l.id) && l.owner === me.id) ctx.inbox({ title: '📮 펫이 이번 주 편지를 보냈어요', body: String(l.text || '').slice(0, 120), tag: 'letter-' + l.id, url: './#letters' }); }
+    letters = list; lettersLoaded = true; renderAchExtra();
+  });
+  work.onCheers(list => {
+    if (cheersLoaded && ctx.inbox) { const prev = new Set(cheers.map(c => c.id)); for (const c of list) if (!prev.has(c.id) && c.to === me.id && c.from !== me.id) ctx.inbox({ title: `👏 ${ctx.nameOf(c.from)}님이 응원했어요`, body: c.label ? `${c.label} 응원해요! 오늘도 같이 해요` : '오늘도 같이 해요', tag: 'cheer-' + c.id, url: './#today' }); }
+    cheers = list; cheersLoaded = true; renderSlot(); ctx.changed && ctx.changed();
+  });
   work.onPetState(st => { petState = st; renderSlot(); ctx.onLevels && ctx.onLevels(); });
 
   return {

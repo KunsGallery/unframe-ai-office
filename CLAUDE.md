@@ -17,6 +17,7 @@
 
 ## 구조
 - `web/office.js` 사무실 렌더러(Pixel Agents 스프라이트, MIT — `web/assets/LICENSE-pixel-agents.txt`). 배치는 `FURNITURE` 목록.
+- `web/inbox.js` 🔔 알림센터(프로필 옆, 앱이 열려 있는 동안 온 알림을 이 기기 localStorage에 2주 보관 — `notify()`가 항상 남김).
 - `web/app.js` 로그인·Firestore·탭 전환(#today/#log/#achieve/#together/#office)·채팅·화이트보드·확인 요청·업무일지·꾸미기·알림·PWA. `?demo`로 가짜 데이터 데모(습관 200일치 포함).
 - `web/log/` Unframe Log 화면: `model.js`(통계·업적·계산기 순수 함수), `store.js`(Firestore/데모 저장소), `charts.js`(SVG), `ui.js`(오늘·내 기록·성취·축하·습관 만들기), `report.js`(리포트·PNG 저장), `log.css`, `docs.js`(블록 편집기 — 문서 모델은 page.blocks 배열, 저장은 rev+1), `calendar.js`, `workstore.js`(pages·events 저장소+데모), `pet.js`(펫 카드·기분·펫 비서 설정·펫과 대화), `emoji.js`(data-emoji-picker 칸을 누르면 이모지 창), `daily.js`(오늘의 한 줄·퀴즈 목록). 펫 성장: XP = 기록한 습관 ×10 + 목표 달성 ×5 + 업적 ×30, 목표 2/3 이상 채운 날마다 간식 1개. 🔮 내 패턴 찾기는 `pet-chat.mjs`의 mode 'insight'. 서체 Oswald(Google Fonts)+Pretendard(jsDelivr). 탭: today·calendar·docs·log·achieve·together·office.
 - `web/hook/` 각자 PC에 설치되는 Claude Code 훅 (`office-state.js`는 훅과 데모가 공유하는 상태 로직). 훅을 바꾸면 각자 "내 PC 연결" 재실행 필요.
