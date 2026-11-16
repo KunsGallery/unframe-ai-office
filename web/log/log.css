@@ -343,6 +343,13 @@ dialog.lg-dlg::backdrop { background: rgba(14, 14, 16, .5); }
 .cal-evs i.theirs { background: #e4572e; color: #fff; }
 .cal-evs i.due { background: rgba(251, 191, 36, .1); color: #fbbf24; }
 .cal-evs i.more { color: var(--ink2); padding-left: 2px; }
+.cal-evs i.span { border-radius: 0; margin: 0 -4px; padding-left: 9px; opacity: .85; }
+.cal-evs i.span.s0 { border-radius: 4px 0 0 4px; margin-left: 0; padding-left: 5px; }
+.cal-evs i.span.s1 { border-radius: 0 4px 4px 0; margin-right: 0; }
+.cal-evs i.span.s0.s1 { border-radius: 4px; }
+.cal-evs i.span.cont { color: transparent; }
+.cal-fl { flex: 0 0 34px; align-self: center; font-size: 13px; font-weight: 700; color: var(--ink2); }
+.cal-fhint { color: var(--ink2); font-size: 12px; line-height: 1.5; }
 .cal-evs b { font-weight: 700; }
 .cal-dots { display: flex; gap: 3px; flex-wrap: wrap; margin-top: auto; padding-left: 2px; }
 .cal-dots i { width: 6px; height: 6px; border-radius: 50%; }
@@ -352,6 +359,7 @@ dialog.lg-dlg::backdrop { background: rgba(14, 14, 16, .5); }
   .cal-evs { flex-direction: row; gap: 2px; justify-content: center; flex-wrap: wrap; }
   .cal-evs i { width: 6px; height: 6px; padding: 0; border-radius: 50%; font-size: 0; }
   .cal-evs i.more { display: none; }
+  .cal-evs i.span, .cal-evs i.span.s0, .cal-evs i.span.s1 { margin: 0; padding: 0; border-radius: 2px; width: 10px; }
   .cal-evs i.due { background: #f0a202; }
   .cal-dots { justify-content: center; padding: 0; }
   .cal-dots i { width: 4px; height: 4px; }
@@ -383,7 +391,10 @@ dialog.lg-dlg::backdrop { background: rgba(14, 14, 16, .5); }
 .cal-empty { color: var(--ink2); font-size: 14px; }
 .cal-form { display: flex; flex-direction: column; gap: 8px; background: var(--card); border: 1px solid var(--line2); border-radius: 14px; padding: 14px; margin-top: 8px; }
 .lgpane .cal-form input:not([type=checkbox]) { min-height: 44px; border: 1px solid var(--line2); border-radius: 10px; padding: 0 12px; font: 16px var(--f-body); background: var(--card); color: var(--ink); min-width: 0; width: 100%; box-sizing: border-box; }
-.cal-frow { display: flex; gap: 8px; }
+.cal-frow { display: flex; gap: 8px; min-width: 0; }
+.lgpane .cal-frow input:not([type=checkbox]) { flex: 1 1 0; width: auto; padding: 0 8px; }
+.lgpane .cal-frow input[type=date] { flex-grow: 1.35; }
+.cal-wrap > * { min-width: 0; }
 .cal-form .lg-check { margin: 4px 0 0; font-size: 14px; }
 .cal-form .lg-check input { width: 18px; height: 18px; accent-color: var(--cobalt); }
 .cal-form .lg-drow { margin-top: 6px; }

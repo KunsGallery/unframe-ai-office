@@ -199,11 +199,13 @@ service cloud.firestore {
     // 📅 일정. 읽기: 본인 또는 함께 보기. 함께 보기 일정은 둘 다 고치고 지울 수 있고, 공개 범위는 본인만.
     match /events/{eid} {
       function okEvent(d) {
-        return d.keys().hasOnly(['owner', 'title', 'day', 'time', 'note', 'shared', 'createdAt', 'updatedAt'])
+        return d.keys().hasOnly(['owner', 'title', 'day', 'time', 'endDay', 'endTime', 'note', 'shared', 'createdAt', 'updatedAt'])
           && d.owner is string
           && d.title is string && d.title.size() > 0 && d.title.size() <= 100
           && d.day is string && d.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
           && d.time is string && (d.time == '' || d.time.matches('[0-9]{2}:[0-9]{2}'))
+          && (!('endDay' in d) || (d.endDay is string && (d.endDay == '' || (d.endDay.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}') && d.endDay > d.day))))
+          && (!('endTime' in d) || (d.endTime is string && (d.endTime == '' || d.endTime.matches('[0-9]{2}:[0-9]{2}'))))
           && d.note is string && d.note.size() <= 500
           && d.shared is bool
           && d.updatedAt == request.time;
