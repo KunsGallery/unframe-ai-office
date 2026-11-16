@@ -269,7 +269,7 @@ export function initPet(ctx) {
     const until = addDays(today, 7);
     const endOf = e => (e.endDay && e.endDay > e.day ? e.endDay : e.day);
     const events = (ctx.events() || []).filter(e => e.day <= until && endOf(e) >= today).sort((a, b) => (a.day + (a.time || '99')) < (b.day + (b.time || '99')) ? -1 : 1)
-      .slice(0, 20).map(e => ({ day: e.day, ...(endOf(e) > e.day ? { until: endOf(e) } : {}), time: e.time || '하루 종일', title: e.title, who: e.owner === me.id ? '나' : (ctx.nameOf(e.owner) + '님') }));
+      .slice(0, 20).map(e => ({ day: e.day, ...(endOf(e) > e.day ? { until: endOf(e) } : {}), time: e.time || '하루 종일', title: e.title, who: e.cal === 'unframe' ? '언프레임(회사)' : e.cal === 'kuns' ? '쿤스갤러리(회사)' : e.owner === me.id ? '나' : (ctx.nameOf(e.owner) + '님') }));
     const tasks = (ctx.tasks() || []).filter(b => !b.done && (b.assignee === me.id || (!b.assignee && b.by === me.id))).slice(0, 20).map(b => ({ text: b.text, due: b.due || '' }));
     const m = moodFor(me.id);
     return { today: `${today} (${fmtDate(today).split(' ').pop()})`, now: new Date().toTimeString().slice(0, 5), me: me.name, habits, events, tasks,

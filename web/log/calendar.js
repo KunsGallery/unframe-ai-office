@@ -4,6 +4,9 @@ import { dayKey, addDays, fmtDate, fmtAmount, STEPS } from './model.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
+// 회사 캘린더: 둘 다 보고 둘 다 고칠 수 있는 공용 일정 (cal 값). ''이면 개인 일정(내 것 / 상대 것)
+export const CALS = { unframe: { name: '언프레임', emoji: '◆' }, kuns: { name: '쿤스갤러리', emoji: '🖼' } };
+export const calName = e => (e && CALS[e.cal] ? CALS[e.cal].name : '');
 
 export function initCalendar(ctx) {
   const { work, logs, logStore, me, members, avatar, toast, getBoard, docs, go } = ctx;
@@ -11,6 +14,10 @@ export function initCalendar(ctx) {
   const now = new Date();
   let y = now.getFullYear(), m = now.getMonth(), sel = dayKey(), events = [], visible = false, editing = null, formOpen = false;
   const pane = $('paneCalendar');
+  // 달력에서 숨길 종류 (mine·theirs·unframe·kuns) — 이 기기에만 기억
+  let hide = new Set();
+  try { hide = new Set(JSON.parse(localStorage.getItem('unframe-cal-hide') || '[]')); } catch {}
+  const saveHide = () => { try { localStorage.setItem('unframe-cal-hide', JSON.stringify([...hide])); } catch {} };
 
   work.onEvents(list => { events = list; if (visible) render(); }, e => toast('일정을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
   logs.onChange(() => { if (visible) render(); });
@@ -18,16 +25,16 @@ export function initCalendar(ctx) {
   // 기간 일정: endDay가 day보다 뒤면 그 사이 모든 날에 보인다 (전시처럼)
   const endOf = e => (e.endDay && e.endDay > e.day ? e.endDay : e.day);
   const multi = e => endOf(e) > e.day;
-  const evOn = d => events.filter(e => e.day <= d && endOf(e) >= d)
+  const evOn = d => events.filter(e => e.day <= d && endOf(e) >= d && !hide.has(kindOf(e)))
     .sort((a, b) => (multi(b) - multi(a)) || (a.day < b.day ? -1 : a.day > b.day ? 1 : 0) || (endOf(b) > endOf(a) ? 1 : endOf(b) < endOf(a) ? -1 : 0) || ((a.time || '99') < (b.time || '99') ? -1 : 1));
   const md = k => `${+k.slice(5, 7)}/${+k.slice(8)}`;
   const nDays = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000) + 1;
   const rangeText = e => `${md(e.day)}${e.time ? ' ' + e.time : ''} ~ ${md(endOf(e))}${e.endTime ? ' ' + e.endTime : ''}`;
   // 한 칸 안의 일정 조각: 기간 일정은 이어지는 막대처럼 (시작·주의 첫날에만 제목)
   const chip = (e, d, weekStart) => {
-    if (!multi(e)) return `<i class="${ownerCls(e.owner)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.title)}</i>`;
+    if (!multi(e)) return `<i class="${kindOf(e)}">${e.time ? `<b>${esc(e.time)}</b> ` : ''}${esc(e.title)}</i>`;
     const pos = (d === e.day ? ' s0' : '') + (d === endOf(e) ? ' s1' : '');
-    return `<i class="${ownerCls(e.owner)} span${pos}${d === e.day || weekStart ? '' : ' cont'}">${esc(e.title)}</i>`;
+    return `<i class="${kindOf(e)} span${pos}${d === e.day || weekStart ? '' : ' cont'}">${esc(e.title)}</i>`;
   };
   const timeLabel = (e, d) => {
     if (!multi(e)) return e.time || '하루 종일';
@@ -35,7 +42,7 @@ export function initCalendar(ctx) {
     if (d === endOf(e)) return e.endTime ? '~' + e.endTime : '마지막 날';
     return `${nDays(e.day, d)}일째`;
   };
-  const ownerCls = o => (o === me.id ? 'mine' : 'theirs');
+  const kindOf = e => (CALS[e.cal] ? e.cal : e.owner === me.id ? 'mine' : 'theirs');
 
   function render() {
     const { trackers, byT } = logs.data();
@@ -59,7 +66,8 @@ export function initCalendar(ctx) {
         <div class="cal-head"><div><div class="lg-kicker">캘린더 · ${y}년</div><h1 class="lg-display"><span class="lg-n">${m + 1}</span><span class="lg-u">월</span></h1></div>
           <span class="cal-nav"><button class="lg-yr" data-mon="-1" type="button" aria-label="이전 달">‹</button><button class="lg-btn ghost" data-act="today" type="button">오늘</button><button class="lg-yr" data-mon="1" type="button" aria-label="다음 달">›</button></span></div>
         <div class="cal-grid" role="grid">${WD.map((w, i) => `<span class="cal-w${i === 0 ? ' sun' : ''}">${w}</span>`).join('')}${cells.join('')}</div>
-        <p class="cal-legend"><i class="mine"></i>내 일정 <i class="theirs"></i>${esc(members.filter(x => x.id !== me.id).map(x => x.name).join('·') || '상대')} 일정 <span>● 그날 한 습관</span></p>
+        <p class="cal-legend">${[['mine', '내 일정'], ['theirs', (members.filter(x => x.id !== me.id).map(x => x.name).join('·') || '상대') + ' 일정'], ...Object.entries(CALS).map(([k, c]) => [k, c.name])]
+          .map(([k, label]) => `<button type="button" class="cal-lg${hide.has(k) ? ' off' : ''}" data-hide="${k}" aria-pressed="${!hide.has(k)}" title="눌러서 ${hide.has(k) ? '보이기' : '숨기기'}"><i class="${k}"></i>${esc(label)}</button>`).join('')}<span>● 그날 한 습관</span></p>
       </section>
       <section class="lg-sec light cal-day" id="calDay">${dayHtml(sel, trackers, byT, due)}</section></div>`;
   }
@@ -78,16 +86,18 @@ export function initCalendar(ctx) {
 
       ${moodHtml(d)}
       <h3 class="cal-h">일정 <button class="lg-btn ghost sm" data-act="addev" type="button">+ 일정</button></h3>
-      <ul class="cal-list">${evs.map(x => `<li class="${ownerCls(x.owner)}"><button type="button" data-ev="${x.id}">
+      <ul class="cal-list">${evs.map(x => `<li class="${kindOf(x)}"><button type="button" data-ev="${x.id}">
         <span class="cal-time">${esc(timeLabel(x, d))}</span><b>${esc(x.title)}</b>${multi(x) ? `<small>🗓 ${esc(rangeText(x))} · ${nDays(x.day, endOf(x))}일</small>` : ''}${x.note ? `<small>${esc(x.note)}</small>` : ''}
-        <em>${x.owner === me.id ? (x.shared ? '' : '🔒') : `<img alt="" src="${avatar(members.find(mm => mm.id === x.owner) || { id: x.owner })}">${esc(nameOf(x.owner))}`}</em></button></li>`).join('') || (formOpen ? '' : '<li class="cal-empty">일정이 없어요</li>')}</ul>
+        <em>${CALS[x.cal] ? `<span class="cal-badge ${x.cal}">${esc(CALS[x.cal].name)}</span>` : x.owner === me.id ? (x.shared ? '' : '🔒') : `<img alt="" src="${avatar(members.find(mm => mm.id === x.owner) || { id: x.owner })}">${esc(nameOf(x.owner))}`}</em></button></li>`).join('') || (formOpen ? '' : '<li class="cal-empty">일정이 없어요</li>')}</ul>
       ${formOpen ? `<form class="cal-form" id="calForm">
         <input name="title" maxlength="100" required placeholder="일정 제목" value="${esc(e ? e.title : '')}" aria-label="일정 제목">
         <div class="cal-frow"><span class="cal-fl">시작</span><input name="day" type="date" value="${esc(e ? e.day : d)}" aria-label="시작 날짜" required><input name="time" type="time" value="${esc(e ? e.time : '')}" aria-label="시작 시간 (비우면 하루 종일)"></div>
         <div class="cal-frow"><span class="cal-fl">끝</span><input name="endDay" type="date" value="${esc(e && multi(e) ? e.endDay : '')}" min="${esc(e ? e.day : d)}" aria-label="끝 날짜 (비우면 하루 일정)"><input name="endTime" type="time" value="${esc(e && multi(e) ? e.endTime || '' : '')}" aria-label="끝 시간 (선택)"></div>
         <small class="cal-fhint">하루 일정은 끝을 비워 두세요. 시간을 비우면 하루 종일이에요. 전시처럼 며칠 이어지면 끝 날짜를 고르세요.</small>
         <input name="note" maxlength="500" placeholder="메모 (선택)" value="${esc(e ? e.note : '')}" aria-label="메모">
-        <label class="lg-check"><input type="checkbox" name="shared" ${!e || e.shared ? 'checked' : ''} ${e && e.owner !== me.id ? 'disabled' : ''}> 👥 함께 보기 <small>(끄면 나만 봐요)</small></label>
+        <div class="cal-kinds" role="radiogroup" aria-label="어느 캘린더">${[['', '👤 개인'], ...Object.entries(CALS).map(([k, c]) => [k, `${c.emoji} ${c.name}`])]
+          .map(([k, label]) => `<label class="cal-kind ${k || 'mine'}"><input type="radio" name="cal" value="${k}" ${(e ? (e.cal || '') : (ctx.lastCal || '')) === k ? 'checked' : ''}><span>${esc(label)}</span></label>`).join('')}</div>
+        <label class="lg-check cal-share"><input type="checkbox" name="shared" ${!e || e.shared ? 'checked' : ''} ${e && e.owner !== me.id ? 'disabled' : ''}> 👥 함께 보기 <small>(끄면 나만 봐요)</small></label>
         <div class="lg-drow">${e && (e.owner === me.id || e.shared) ? '<button class="lg-btn ghost" data-act="delev" type="button">삭제</button>' : ''}<button class="lg-btn ghost" data-act="cancelev" type="button">취소</button><button class="lg-btn primary" type="submit">${e ? '저장' : '추가'}</button></div>
       </form>` : ''}
 
@@ -134,6 +144,8 @@ export function initCalendar(ctx) {
       p.catch(err => toast('기록하지 못했어요 (' + (err.code || err.message) + ')'));
       return;
     }
+    const hb = e.target.closest('[data-hide]');
+    if (hb) { const k = hb.dataset.hide; hide.has(k) ? hide.delete(k) : hide.add(k); saveHide(); render(); return; }
     const b = e.target.closest('[data-act]'); if (!b) return;
     const act = b.dataset.act;
     if (act === 'today') { const t = new Date(); y = t.getFullYear(); m = t.getMonth(); sel = dayKey(); render(); }
@@ -161,11 +173,15 @@ export function initCalendar(ctx) {
     if (endDay && endDay < data.day) { toast('끝 날짜가 시작 날짜보다 빨라요'); return; }
     data.endDay = endDay > data.day ? endDay : '';
     data.endTime = data.endDay ? String(f.get('endTime') || '') : '';
-    if (!ev || ev.owner === me.id) data.shared = f.get('shared') === 'on';
+    data.cal = CALS[f.get('cal')] ? String(f.get('cal')) : '';
+    ctx.lastCal = data.cal;
+    if (data.cal) data.shared = true;   // 회사 일정은 늘 함께 보기
+    else if (!ev || ev.owner === me.id) data.shared = f.get('shared') === 'on';
+    else if (ev.cal) data.shared = true;
     const p = ev ? work.updateEvent(ev.id, data) : work.addEvent(data);
     p.then(() => {
       toast(ev ? '📅 일정을 고쳤어요' : data.endDay ? `📅 ${md(data.day)}~${md(data.endDay)} 일정을 넣었어요` : `📅 ${fmtDate(data.day)}에 일정을 넣었어요`);
-      if (!ev && data.shared && ctx.notifyOthers) ctx.notifyOthers(`📅 ${me.name}님이 일정을 넣었어요`, `${data.endDay ? `${fmtDate(data.day)} ~ ${fmtDate(data.endDay)}` : fmtDate(data.day) + (data.time ? ' ' + data.time : '')} · ${data.title}`, 'event-' + data.day + data.title.slice(0, 30));
+      if (!ev && data.shared && ctx.notifyOthers) ctx.notifyOthers(`📅 ${me.name}님이 ${data.cal ? CALS[data.cal].name + ' ' : ''}일정을 넣었어요`, `${data.endDay ? `${fmtDate(data.day)} ~ ${fmtDate(data.endDay)}` : fmtDate(data.day) + (data.time ? ' ' + data.time : '')} · ${data.title}`, 'event-' + data.day + data.title.slice(0, 30));
     }).catch(err => toast('저장하지 못했어요 (' + (err.code || err.message) + ')'));
     sel = data.day; y = +data.day.slice(0, 4); m = +data.day.slice(5, 7) - 1;
     editing = null; formOpen = false; render();

@@ -67,7 +67,7 @@ async function gather(db, member, slot, kst, s) {
   const endOf = e => (e.endDay && e.endDay > e.day ? e.endDay : e.day);   // 기간 일정 (전시 등)
   const weekEvents = events.filter(e => e.day <= today && endOf(e) >= addDay(today, -6)).map(e => `${e.day.slice(5)}${endOf(e) > e.day ? '~' + endOf(e).slice(5) : ''} ${e.title}`);
   const ev = events.filter(e => e.day <= today && endOf(e) >= today && (e.owner === member.id || e.shared)).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1)
-    .map(e => `${endOf(e) > e.day ? (e.day === today ? `${e.time || ''} ${e.title} 시작 (~${endOf(e).slice(5)})` : endOf(e) === today ? `${e.title} 마지막 날${e.endTime ? ` (~${e.endTime})` : ''}` : `${e.title} 진행 중 (${e.day.slice(5)}~${endOf(e).slice(5)})`).trim() : `${e.time || '하루 종일'} ${e.title}`}${e.owner !== member.id ? ` (${(MEMBERS.find(m => m.id === e.owner) || {}).name}님 일정)` : ''}`);
+    .map(e => `${endOf(e) > e.day ? (e.day === today ? `${e.time || ''} ${e.title} 시작 (~${endOf(e).slice(5)})` : endOf(e) === today ? `${e.title} 마지막 날${e.endTime ? ` (~${e.endTime})` : ''}` : `${e.title} 진행 중 (${e.day.slice(5)}~${endOf(e).slice(5)})`).trim() : `${e.time || '하루 종일'} ${e.title}`}${e.cal === 'unframe' ? ' [언프레임]' : e.cal === 'kuns' ? ' [쿤스갤러리]' : e.owner !== member.id ? ` (${(MEMBERS.find(m => m.id === e.owner) || {}).name}님 일정)` : ''}`);
   const doneWeek = board.filter(b => b.done && b.doneBy === member.id && b.doneDay >= addDay(today, -6)).map(b => b.text);
   const mine = board.filter(b => !b.done && (b.assignee === member.id || (!b.assignee && b.by === member.id)));
   const due = mine.filter(b => b.due && b.due <= today).map(b => `${b.text}${b.due < today ? ' (마감 지남)' : ' (오늘 마감)'}`);

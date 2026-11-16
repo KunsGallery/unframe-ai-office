@@ -1,7 +1,7 @@
 // 문서(pages)와 일정(events) 저장소: Firestore 또는 데모(메모리)
 // pages/{id}  : owner, title, emoji, tags[], shared, pinned, blocks[], preview, rev, createdAt, updatedAt, updatedBy
 //   - 동시 편집 대신 덮어쓰기 방지: 저장할 때마다 rev를 1 올리고, 규칙은 '이전 rev + 1'만 받는다
-// events/{id} : owner, title, day, time, endDay(''이면 하루), endTime, note, shared, createdAt, updatedAt
+// events/{id} : owner, title, day, time, endDay(''이면 하루), endTime, cal(''·'unframe'·'kuns' 회사 캘린더), note, shared, createdAt, updatedAt
 import { dayKey, addDays } from './model.js';
 
 function merge2(cb) {
@@ -113,7 +113,9 @@ export function demoWorkStore(meId, otherId) {
   ev(meId, '독서 모임', 2, '19:30', '「아주 작은 습관의 힘」 3장까지');
   ev(meId, '치과', -3, '10:00', '', false);
   ev(meId, '월간 리포트 보기', 14, '', '');
-  E.push({ id: 'e' + E.length, owner: meId, title: '🖼 봄 그림 전시', day: addDays(today, -2), time: '', endDay: addDays(today, 9), endTime: '', note: '갤러리 1층 · 매일 11~19시', shared: true, createdAt: now, updatedAt: now });
+  E.push({ id: 'e' + E.length, owner: meId, cal: 'unframe', title: '언프레임 뉴스레터 발송', day: addDays(today, 4), time: '10:00', endDay: '', endTime: '', note: '', shared: true, createdAt: now, updatedAt: now });
+  E.push({ id: 'e' + E.length, owner: meId, cal: 'kuns', title: '작가 미팅', day: addDays(today, 1), time: '15:00', endDay: '', endTime: '', note: '쿤스갤러리 2층', shared: true, createdAt: now, updatedAt: now });
+  E.push({ id: 'e' + E.length, owner: meId, cal: 'kuns', title: '🖼 봄 그림 전시', day: addDays(today, -2), time: '', endDay: addDays(today, 9), endTime: '', note: '갤러리 1층 · 매일 11~19시', shared: true, createdAt: now, updatedAt: now });
   if (otherId) {
     ev(otherId, '12월 운영 회의', 3, '14:00', '뉴스레터 · 관리자 화면');
     ev(otherId, '외근 (미팅)', 0, '16:00', '');
