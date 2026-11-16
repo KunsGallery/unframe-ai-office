@@ -15,6 +15,7 @@ export function initLog(ctx) {
   let trackers = [], logs = [], byT = new Map(), tLoaded = false, lLoaded = false;
   let profileLoaded = false, seen;          // seen: undefined = 아직 한 번도 저장 안 함
   let current = 'today', sel = null, year = new Date().getFullYear(), showArchived = false;
+  const listeners = [];                    // 문서·캘린더가 데이터 바뀜을 듣는다
   const pace = {};                          // 습관별 계산기 값
   const undo = [];                          // 이번 접속에서 누른 기록 (되돌리기용)
   const shown = {};                         // 오늘 카드에 마지막으로 보인 양 (숫자 올라가는 애니메이션)
@@ -28,7 +29,7 @@ export function initLog(ctx) {
   store.onTrackers(list => { trackers = list; tLoaded = true; changed(); }, e => toast('습관을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
   store.onLogs(list => { logs = list; byT = indexLogs(logs); lLoaded = true; changed(); }, e => toast('기록을 불러오지 못했어요 (' + (e.code || e.message) + ')'));
 
-  function changed() { render(); checkAchievements(); }
+  function changed() { render(); checkAchievements(); if (tLoaded && lLoaded) listeners.forEach(fn => fn()); }
   function render() {
     if (!tLoaded || !lLoaded) return;
     if (current === 'today') renderToday();
@@ -429,5 +430,9 @@ export function initLog(ctx) {
       checkAchievements();
     },
     newTracker: () => openTrackerDialog(),
+    /** 문서·캘린더가 쓰는 공용 데이터 */
+    data: () => ({ trackers, byT, loaded: tLoaded && lLoaded }),
+    onChange: fn => listeners.push(fn),
+    openTracker: id => { sel = id; year = new Date().getFullYear(); ctx.go('log'); },
   };
 }

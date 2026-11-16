@@ -246,7 +246,8 @@
   .brand { font: 600 19px "Oswald", sans-serif !important; letter-spacing: .02em !important; text-transform: uppercase; white-space: nowrap; }
   .brand span { color: #8ea0ff; }
   header.topbar .sub { font-size: 12px; color: #9a98a0; white-space: nowrap; }
-  .tabbar { display: flex; gap: 2px; margin: 0 auto; }
+  .tabbar { display: flex; gap: 2px; margin: 0 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  @media (min-width: 761px) and (max-width: 1100px) { .tabbar button { padding: 8px 9px; } .tabbar i { display: none; } header.topbar .sub { display: none; } }
   .tabbar button { background: none; border: 0; color: #b9b7bf; padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; position: relative; white-space: nowrap; }
   .tabbar button i { font-style: normal; font-size: 11px; opacity: .7; }
   .tabbar button:hover { color: #fff; }
@@ -268,7 +269,9 @@
     header.topbar { padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top)); }
     header.topbar .sub { display: none; }
     .tabbar { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; background: #111114; justify-content: space-around; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); z-index: 30; border-top: 1px solid #2a2a30; }
-    .tabbar button { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 8px; min-width: 56px; border-radius: 12px; }
+    .tabbar { justify-content: stretch; }
+    .tabbar button { flex: 1 1 0; flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 0; min-width: 0; border-radius: 12px; }
+    .tabbar .long { display: none; }
     .tabbar button i { font-size: 14px; }
     .headright { margin-left: auto; }
     .mainlike { padding-bottom: 90px !important; }
@@ -293,7 +296,9 @@
   <span class="sub" id="modeNote"></span>
   <nav class="tabbar" id="tabbar" aria-label="화면">
     <button type="button" data-tab="today"><i>●</i>오늘</button>
-    <button type="button" data-tab="log"><i>▦</i>내 기록</button>
+    <button type="button" data-tab="calendar"><i>▤</i>캘린더</button>
+    <button type="button" data-tab="docs"><i>¶</i>문서</button>
+    <button type="button" data-tab="log"><i>▦</i><span class="long">내 </span>기록</button>
     <button type="button" data-tab="achieve"><i>★</i>성취</button>
     <button type="button" data-tab="together"><i>✉</i>함께<span class="badge" id="togetherBadge" hidden></span></button>
     <button type="button" data-tab="office"><i>▣</i>오피스</button>
@@ -325,6 +330,8 @@
   </span>
 </header>
 <section class="pane lgpane" id="paneToday" aria-label="오늘"></section>
+<section class="pane lgpane wide" id="paneCalendar" aria-label="캘린더" hidden></section>
+<section class="pane lgpane" id="paneDocs" aria-label="문서" hidden></section>
 <section class="pane lgpane" id="paneLog" aria-label="내 기록" hidden></section>
 <section class="pane lgpane" id="paneAchieve" aria-label="성취" hidden></section>
 <div class="pane mainlike" id="paneTogether" hidden>
@@ -464,6 +471,8 @@
     <h4>🗂 탭</h4>
     <table>
       <tr><td>오늘</td><td>내 습관을 한 번 눌러 기록 (분 +5·+10·+15·+30 / 개수 +1·+5 / 했어요, … 로 직접 입력). 잘못 눌렀으면 ↶ 또는 알림의 되돌리기. ✎로 오늘 한마디. 아래에 상대의 오늘 진행(공개 습관만)</td></tr>
+      <tr><td>캘린더</td><td>한 달 보기. 날짜를 누르면 그날 일정(추가·수정), 내 기록(지난 날도 +/−로 고치기), 상대 기록, 화이트보드 마감, 그날 고친 문서, "○월 ○일 메모" 쓰기</td></tr>
+      <tr><td>문서</td><td>노션처럼 블록으로 쓰는 문서. 태그·검색, 📌 고정, 기본은 👥 함께 보기(상대도 읽고 고침, 🔒 나만 보기로 바꿀 수 있음). 1초마다 자동 저장. 둘이 동시에 고치면 덮어쓰지 않고 알려줘요</td></tr>
       <tr><td>내 기록</td><td>습관 하나의 올해 누적 숫자, 365점 그리드, 원형 연간 달력, "이 속도면" 계산기(−/+를 누르면 바로 다시 계산), 월별 막대. 습관 고치기·보관</td></tr>
       <tr><td>성취</td><td>업적(첫 기록, 연속 7·30·100·365일, 누적 시간·개수, 기록한 날, 한 달 개근)과 다음 목표. 달성하면 축하 화면이 한 번 떠요. 월간·연간 리포트는 이미지로 저장할 수 있어요</td></tr>
       <tr><td>함께</td><td>메시지 · 📋 화이트보드 · 🙋 확인 요청 · 📓 업무일지</td></tr>
@@ -475,8 +484,10 @@
     <h4>⌨️ 단축키</h4>
     <table>
       <tr><td><kbd>?</kbd></td><td>도움말 열기·닫기</td></tr>
-      <tr><td><kbd>1</kbd>~<kbd>5</kbd></td><td>오늘 · 내 기록 · 성취 · 함께 · 오피스 탭</td></tr>
+      <tr><td><kbd>1</kbd>~<kbd>7</kbd></td><td>오늘 · 캘린더 · 문서 · 내 기록 · 성취 · 함께 · 오피스 탭</td></tr>
       <tr><td><kbd>N</kbd></td><td>새 습관 만들기</td></tr>
+      <tr><td><kbd>D</kbd></td><td>새 문서</td></tr>
+      <tr><td>문서에서 <kbd>/</kbd></td><td>블록 고르기 (제목·목록·할 일·인용·콜아웃·코드·구분선·습관 카드). <kbd>#</kbd> <kbd>-</kbd> <kbd>1.</kbd> <kbd>[]</kbd> <kbd>&gt;</kbd> <kbd>---</kbd> 로 바로 바꾸기, <kbd>⌘B</kbd> <kbd>⌘I</kbd> <kbd>⌘E</kbd> 코드 <kbd>⌘K</kbd> 링크</td></tr>
       <tr><td><kbd>M</kbd></td><td>메시지 입력칸으로</td></tr>
       <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>메시지 보내기 / 줄 바꾸기</td></tr>
       <tr><td><kbd>B</kbd></td><td>화이트보드(할 일 추가)</td></tr>

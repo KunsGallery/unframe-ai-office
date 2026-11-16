@@ -5,6 +5,9 @@ import { firebaseConfig } from './firebase-config.js';
 import * as office from './office.js';
 import { initLog } from './log/ui.js';
 import { firebaseLogStore, demoLogStore } from './log/store.js';
+import { firebaseWorkStore, demoWorkStore } from './log/workstore.js';
+import { initDocs } from './log/docs.js';
+import { initCalendar } from './log/calendar.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -79,6 +82,7 @@ async function firebaseStore() {
     onProfiles: cb => F.onSnapshot(F.collection(db, 'profiles'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()])))),
     saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p, { merge: true }),
     logStore: () => firebaseLogStore(F, db, me.id),
+    workStore: () => firebaseWorkStore(F, db, me.id),
     heartbeat: (status, pos) => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status, pos: pos || null }),
     onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work', pos: d.data().pos || null }])))),
     // 📝 회의 메모 (날짜마다 한 장)
@@ -220,6 +224,7 @@ function demoStore() {
     onProfiles: cb => { subs.profiles = cb; cb({}); },
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
+    workStore: () => demoWorkStore(me.id, other !== MEMBERS[0] ? other.id : null),
     heartbeat: async (status, pos) => {
       presenceDemo[me.id] = { at: Date.now(), status, pos: pos || null };
       subs.presence.forEach(cb => cb({ ...presenceDemo }));
@@ -643,6 +648,7 @@ const dueInfo = (due, done) => {
   return { cls: due === t ? 'soon' : '', text: due === t ? '오늘까지' : due === tm ? '내일까지' : `${due.slice(5).replace('-', '/')}까지` };
 };
 function renderBoard() {
+  if (calUi) calUi.refresh();
   const t = today();
   const rank = x => x.done ? 3 : x.due && x.due < t ? 0 : x.due ? 1 : 2;
   const items = boardItems.slice().sort((a, b) => rank(a) - rank(b) || (a.due || '9') .localeCompare(b.due || '9') || (a.at - b.at));
@@ -1131,7 +1137,8 @@ document.addEventListener('keydown', e => {
   const go = fn => { e.preventDefault(); fn(); };
   if (help) go(() => $('helpDlg').open ? $('helpDlg').close() : $('helpDlg').showModal());
   else if (e.shiftKey) return;
-  else if (/^Digit[1-5]$/.test(e.code)) go(() => showTab(TABS[+e.code.slice(5) - 1]));
+  else if (/^Digit[1-7]$/.test(e.code)) go(() => showTab(TABS[+e.code.slice(5) - 1]));
+  else if (e.code === 'KeyD') go(() => docsUi && docsUi.newPage());
   else if (e.code === 'KeyN') go(() => { showTab('today'); logUi && logUi.newTracker(); });
   else if (e.code === 'KeyM') go(() => { showTab('together'); $('input').focus(); });
   else if (e.code === 'KeyB') go(focusBoard);
@@ -1172,20 +1179,22 @@ $('iosClose').onclick = () => $('iosDlg').close();
 // ======================================================================
 //  탭: 오늘 / 내 기록 / 성취 / 함께 / 오피스
 // ======================================================================
-const TABS = ['today', 'log', 'achieve', 'together', 'office'];
-const PANE = { today: 'paneToday', log: 'paneLog', achieve: 'paneAchieve', together: 'paneTogether', office: 'paneOffice' };
-let currentTab = 'today', logUi = null;
+const TABS = ['today', 'calendar', 'docs', 'log', 'achieve', 'together', 'office'];
+const PANE = { today: 'paneToday', calendar: 'paneCalendar', docs: 'paneDocs', log: 'paneLog', achieve: 'paneAchieve', together: 'paneTogether', office: 'paneOffice' };
+let currentTab = 'today', logUi = null, docsUi = null, calUi = null;
 function showTab(tab, { push = true } = {}) {
   if (!TABS.includes(tab)) tab = 'today';
   const changedTab = tab !== currentTab;
   currentTab = tab;
   for (const t of TABS) $(PANE[t]).hidden = t !== tab;
   document.querySelectorAll('#tabbar [data-tab]').forEach(b => (b.dataset.tab === tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current')));
-  document.body.classList.toggle('lg-on', ['today', 'log', 'achieve'].includes(tab));
+  document.body.classList.toggle('lg-on', !['together', 'office'].includes(tab));
   if (push && location.hash !== '#' + tab) history.replaceState(null, '', location.pathname + location.search + '#' + tab);
   if (tab === 'office') window.dispatchEvent(new Event('resize'));   // 숨어 있던 캔버스 크기 다시 재기
   if (tab === 'together' && me) { markRead(); renderChat(); }
   if (logUi) logUi.show(tab);
+  if (docsUi) docsUi.show(tab);
+  if (calUi) calUi.show(tab);
   if (changedTab) window.scrollTo(0, 0);
 }
 $('tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
@@ -1202,7 +1211,10 @@ document.addEventListener('click', e => { if (!$('tools').hidden && !e.target.cl
 function startLog() {
   // 업적 축하를 한 번만 보이려고 본 업적 id를 profiles에 남긴다 (생김새 값도 같이 써야 규칙을 통과)
   const saveSeen = ids => { const l = look(me); return store.saveProfile({ char: l.char, hue: l.hue, claudeChar: l.claudeChar, claudeHue: l.claudeHue, claudeName: l.claudeName, pet: l.pet, petName: l.petName, seenAchievements: ids.slice(-400) }); };
-  logUi = initLog({ store: store.logStore(), me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab });
+  const logStore = store.logStore(), work = store.workStore();
+  logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab });
+  docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
+  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems });
   showTab(location.hash.slice(1) || 'today', { push: false });
 }
 

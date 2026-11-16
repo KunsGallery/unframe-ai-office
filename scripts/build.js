@@ -172,6 +172,51 @@ service cloud.firestore {
       allow delete: if isMember() && resource.data.owner == myId();
     }
 
+    // 📄 문서 (노션형). 읽기: 본인 또는 함께 보기. 함께 보기 문서는 둘 다 고칠 수 있고, 공개 범위·삭제는 본인만.
+    // 동시 편집 대신: 저장할 때마다 rev가 정확히 1 올라야 한다 (상대가 먼저 고쳤으면 거절 → 화면에서 안내)
+    match /pages/{pid} {
+      function okPage(d) {
+        return d.keys().hasOnly(['owner', 'title', 'emoji', 'tags', 'shared', 'pinned', 'blocks', 'preview', 'rev', 'createdAt', 'updatedAt', 'updatedBy'])
+          && d.owner is string && d.title is string && d.title.size() <= 100
+          && d.emoji is string && d.emoji.size() <= 16
+          && d.tags is list && d.tags.size() <= 10
+          && d.shared is bool && d.pinned is bool
+          && d.blocks is list && d.blocks.size() <= 3000
+          && d.preview is string && d.preview.size() <= 300
+          && d.rev is int
+          && d.updatedAt == request.time && d.updatedBy == myId();
+      }
+      allow read: if isMember() && (resource.data.owner == myId() || resource.data.shared == true);
+      allow create: if isMember() && okPage(request.resource.data) && request.resource.data.owner == myId()
+        && request.resource.data.rev == 0 && request.resource.data.createdAt == request.time;
+      allow update: if isMember() && okPage(request.resource.data)
+        && request.resource.data.owner == resource.data.owner && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.rev == resource.data.rev + 1
+        && (resource.data.owner == myId() || (resource.data.shared == true && request.resource.data.shared == true));
+      allow delete: if isMember() && resource.data.owner == myId();
+    }
+
+    // 📅 일정. 읽기: 본인 또는 함께 보기. 함께 보기 일정은 둘 다 고치고 지울 수 있고, 공개 범위는 본인만.
+    match /events/{eid} {
+      function okEvent(d) {
+        return d.keys().hasOnly(['owner', 'title', 'day', 'time', 'note', 'shared', 'createdAt', 'updatedAt'])
+          && d.owner is string
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 100
+          && d.day is string && d.day.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          && d.time is string && (d.time == '' || d.time.matches('[0-9]{2}:[0-9]{2}'))
+          && d.note is string && d.note.size() <= 500
+          && d.shared is bool
+          && d.updatedAt == request.time;
+      }
+      allow read: if isMember() && (resource.data.owner == myId() || resource.data.shared == true);
+      allow create: if isMember() && okEvent(request.resource.data) && request.resource.data.owner == myId()
+        && request.resource.data.createdAt == request.time;
+      allow update: if isMember() && okEvent(request.resource.data)
+        && request.resource.data.owner == resource.data.owner && request.resource.data.createdAt == resource.data.createdAt
+        && (resource.data.owner == myId() || (resource.data.shared == true && request.resource.data.shared == true));
+      allow delete: if isMember() && (resource.data.owner == myId() || resource.data.shared == true);
+    }
+
     // 📝 회의 메모 (날짜마다 한 문서, 멤버 누구나 고침)
     match /notes/{day} {
       allow read: if isMember();
