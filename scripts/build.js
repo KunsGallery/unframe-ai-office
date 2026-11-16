@@ -217,6 +217,22 @@ service cloud.firestore {
       allow delete: if isMember() && (resource.data.owner == myId() || resource.data.shared == true);
     }
 
+    // 🔔 웹 푸시 구독 (기기마다 한 문서: '멤버id__기기해시'). 알림을 보내는 Netlify 함수가 보내는 사람의 토큰으로 읽고,
+    // 끊긴 구독(앱 삭제 등)은 보내는 쪽이 지울 수 있게 삭제는 멤버 누구나.
+    match /pushSubs/{sid} {
+      allow read: if isMember();
+      allow create, update: if isMember()
+        && sid.matches(myId() + '__[0-9a-f]{24}')
+        && request.resource.data.keys().hasOnly(['owner', 'endpoint', 'keys', 'kinds', 'device', 'updatedAt'])
+        && request.resource.data.owner == myId()
+        && request.resource.data.endpoint is string && request.resource.data.endpoint.size() < 1000 && request.resource.data.endpoint.matches('https://.+')
+        && request.resource.data.keys is map && request.resource.data.keys.keys().hasOnly(['p256dh', 'auth'])
+        && request.resource.data.kinds is list && request.resource.data.kinds.size() <= 10
+        && request.resource.data.device is string && request.resource.data.device.size() <= 60
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isMember();
+    }
+
     // 📝 회의 메모 (날짜마다 한 문서, 멤버 누구나 고침)
     match /notes/{day} {
       allow read: if isMember();

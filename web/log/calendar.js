@@ -126,7 +126,10 @@ export function initCalendar(ctx) {
     if (!data.title || !/^\d{4}-\d{2}-\d{2}$/.test(data.day)) return;
     if (!ev || ev.owner === me.id) data.shared = f.get('shared') === 'on';
     const p = ev ? work.updateEvent(ev.id, data) : work.addEvent(data);
-    p.then(() => toast(ev ? '📅 일정을 고쳤어요' : `📅 ${fmtDate(data.day)}에 일정을 넣었어요`)).catch(err => toast('저장하지 못했어요 (' + (err.code || err.message) + ')'));
+    p.then(() => {
+      toast(ev ? '📅 일정을 고쳤어요' : `📅 ${fmtDate(data.day)}에 일정을 넣었어요`);
+      if (!ev && data.shared && ctx.notifyOthers) ctx.notifyOthers(`📅 ${me.name}님이 일정을 넣었어요`, `${fmtDate(data.day)}${data.time ? ' ' + data.time : ''} · ${data.title}`, 'event-' + data.day + data.title.slice(0, 30));
+    }).catch(err => toast('저장하지 못했어요 (' + (err.code || err.message) + ')'));
     sel = data.day; y = +data.day.slice(0, 4); m = +data.day.slice(5, 7) - 1;
     editing = null; formOpen = false; render();
   });

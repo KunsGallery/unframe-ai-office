@@ -277,6 +277,30 @@
     .mainlike { padding-bottom: 90px !important; }
     .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
   }
+  /* 🔔 알림 켜짐/꺼짐을 헷갈리지 않게 */
+  .pill { display: inline-block; margin-left: 6px; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill.on { background: #1f9d55; color: #fff; }
+  .pill.off { background: #4a4552; color: #d6d1de; }
+  .noti-state { display: flex; flex-direction: column; gap: 2px; border-radius: 12px; padding: 12px 14px; margin: 8px 0 12px; }
+  .noti-state b { font-size: 20px; }
+  .noti-state span { font-size: 13px; }
+  .noti-state.on { background: rgba(31, 157, 85, .16); border: 1px solid #1f9d55; color: #9ff0bf; }
+  .noti-state.off { background: #2a2433; border: 1px solid var(--line); color: var(--muted); }
+  .noti-state.off b { color: var(--text); }
+  .noti-switch { display: flex; align-items: center; gap: 12px; width: 100%; background: #1b1724; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; font-size: 15px; min-height: 52px; }
+  .noti-lbl { margin-right: auto; font-weight: 600; }
+  .noti-track { width: 52px; height: 30px; border-radius: 999px; background: #5a5463; position: relative; transition: background .2s; flex: none; }
+  .noti-knob { position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .noti-switch[aria-checked="true"] .noti-track { background: #1f9d55; }
+  .noti-switch[aria-checked="true"] .noti-knob { transform: translateX(22px); }
+  .noti-txt { font-weight: 700; min-width: 34px; }
+  .noti-switch[aria-checked="true"] .noti-txt.off, .noti-switch[aria-checked="false"] .noti-txt.on { display: none; }
+  .noti-txt.on { color: #6fd08c; }
+  .noti-kinds { display: flex; flex-direction: column; gap: 2px; }
+  .noti-kind { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 6px 0; color: var(--text); }
+  .noti-kind input { width: 18px; height: 18px; accent-color: #1f9d55; flex: none; }
+  .noti-kind input:disabled + * , .noti-kind:has(input:disabled) { opacity: .5; }
+  .noti-help { font-size: 12px !important; }
 </style>
 </head>
 <body>
@@ -324,7 +348,7 @@
       </span>
     </span>
     <button class="btn" id="helpBtn" title="도움말 (단축키 ?)">❓ 도움말</button>
-    <button class="btn" id="notify" aria-pressed="false">🔕 알림 꺼짐</button>
+    <button class="btn" id="notify" role="switch" aria-checked="false" title="이 기기 알림 설정">🔕 알림 <b class="pill off">꺼짐</b></button>
     <button class="btn" id="connectBtn">🔌 내 PC 연결</button>
     <button class="btn" id="signout">로그아웃</button>
   </span>
@@ -550,10 +574,27 @@
 
     <h4>🔔 알림 · 📲 앱 설치 · 🔌 내 PC 연결</h4>
     <ul>
-      <li>알림을 켜면 새 메시지, 확인 요청, 맡겨진 할 일, 내 Claude의 승인 대기(5·15분 뒤 재알림)·완료를 소리와 화면 알림으로 알려줘요.</li>
+      <li>🔔 알림: ⋯ 메뉴의 <b>알림</b>을 눌러 이 기기 알림을 켜요. 초록 <b>켜짐</b>이면 앱을 닫아도 휴대폰·PC로 채팅, 확인 요청, 맡겨진 할 일, 새 일정, 내 Claude 승인 대기가 와요. 기기마다 따로 켜고, 받을 종류도 고를 수 있어요. 아이폰은 홈 화면에 추가한 앱에서 켜야 해요.</li>
       <li>앱 설치: 휴대폰·PC 홈 화면에 아이콘을 만들어요 (아이폰은 Safari 공유 → 홈 화면에 추가).</li>
       <li>내 PC 연결: 명령을 복사해 터미널에 붙여넣으면 내 Claude Code가 사무실에 출근해요. 연결 코드는 다른 사람에게 보내지 마세요.</li>
     </ul>
+  </div>
+</dialog>
+
+<dialog id="notiDlg">
+  <h3>🔔 이 기기 알림</h3>
+  <div class="noti-state off" id="notiState"><b>꺼짐</b><span></span></div>
+  <button type="button" class="noti-switch" id="notiSwitch" role="switch" aria-checked="false">
+    <span class="noti-lbl">알림 받기</span><span class="noti-track" aria-hidden="true"><span class="noti-knob"></span></span>
+    <span class="noti-txt on">켜짐</span><span class="noti-txt off">꺼짐</span>
+  </button>
+  <p>초록색 <b>켜짐</b>이면 이 기기로 알림이 와요. 휴대폰·PC마다 따로 켜야 해요.</p>
+  <h4>받을 알림</h4>
+  <div id="notiKinds" class="noti-kinds"></div>
+  <p class="noti-help">🎧 집중 중일 때는 메시지·요청 알림이 오지 않아요. 아이폰은 Safari에서 <b>공유 → 홈 화면에 추가</b>한 앱에서만 앱을 닫아도 알림이 와요.</p>
+  <div class="row">
+    <button class="btn" type="button" id="notiTest">테스트 알림 보내기</button>
+    <button class="btn primary" type="button" id="notiClose">닫기</button>
   </div>
 </dialog>
 
@@ -563,6 +604,7 @@
     <li>Safari 아래쪽의 <b>공유</b> 버튼(네모에 위 화살표)을 눌러요.</li>
     <li><b>홈 화면에 추가</b>를 눌러요.</li>
     <li>홈 화면의 <b>Unframe Log</b> 아이콘으로 앱처럼 열어요.</li>
+    <li>앱 안의 ⋯ → <b>🔔 알림</b>에서 알림 받기를 켜면 앱을 닫아도 알림이 와요.</li>
   </ol>
   <div class="row"><button class="btn primary" id="iosClose">알겠어요</button></div>
 </dialog>

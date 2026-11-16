@@ -8,6 +8,7 @@ import { firebaseLogStore, demoLogStore } from './log/store.js';
 import { firebaseWorkStore, demoWorkStore } from './log/workstore.js';
 import { initDocs } from './log/docs.js';
 import { initCalendar } from './log/calendar.js';
+import { pushState, enablePush, disablePush, updateKinds, savedKinds, localNotify, KIND_LABEL, isIOS as pushIOS, deviceName } from './push.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -82,6 +83,17 @@ async function firebaseStore() {
     onProfiles: cb => F.onSnapshot(F.collection(db, 'profiles'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, d.data()])))),
     saveProfile: p => F.setDoc(F.doc(db, 'profiles', me.id), p, { merge: true }),
     logStore: () => firebaseLogStore(F, db, me.id),
+    // 🔔 웹 푸시: 이 기기 구독 저장 + 보내기 (Netlify 함수가 상대 기기로 보냄)
+    savePushSub: (id, d) => F.setDoc(F.doc(db, 'pushSubs', id), { ...d, owner: me.id, updatedAt: F.serverTimestamp() }),
+    deletePushSub: id => F.deleteDoc(F.doc(db, 'pushSubs', id)),
+    sendPush: async p => {
+      const res = await fetch('/.netlify/functions/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await auth.currentUser.getIdToken() }, body: JSON.stringify(p),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+      return j;
+    },
     workStore: () => firebaseWorkStore(F, db, me.id),
     heartbeat: (status, pos) => F.setDoc(F.doc(db, 'presence', me.id), { at: F.serverTimestamp(), status, pos: pos || null }),
     onPresence: cb => F.onSnapshot(F.collection(db, 'presence'), s => cb(Object.fromEntries(s.docs.map(d => [d.id, { at: ms(d), status: d.data().status || 'work', pos: d.data().pos || null }])))),
@@ -224,6 +236,8 @@ function demoStore() {
     onProfiles: cb => { subs.profiles = cb; cb({}); },
     saveProfile: async p => { profilesDemo[me.id] = { ...profilesDemo[me.id], ...p }; subs.profiles && subs.profiles(structuredClone(profilesDemo)); },
     logStore: () => demoLogStore(me.id, other !== MEMBERS[0] ? other.id : null),
+    savePushSub: async () => {}, deletePushSub: async () => {},
+    sendPush: async p => { if (p.kind === 'test') localNotify(p.title, p.body, p.tag, p.url); return { sent: p.kind === 'test' ? 1 : 0, demo: true }; },
     workStore: () => demoWorkStore(me.id, other !== MEMBERS[0] ? other.id : null),
     heartbeat: async (status, pos) => {
       presenceDemo[me.id] = { at: Date.now(), status, pos: pos || null };
@@ -277,7 +291,8 @@ async function boot() {
   }
   $('signin').onclick = () => store.signIn().catch(e => showGate(loginError(e)));
   $('demoBtn').onclick = () => store.signIn();
-  $('signout').onclick = () => store.signOut();
+  // 로그아웃하면 이 기기로 내 알림이 오지 않게 구독도 지운다
+  $('signout').onclick = async () => { if (me) await disablePush(store, me).catch(() => {}); try { localStorage.setItem('office-notify', 'off'); } catch {} store.signOut(); };
 
   let started = false;
   store.onAuth(async user => {
@@ -438,8 +453,8 @@ function onOfficeEvent(kind, s) {
     return;
   }
   if (!me || s.owner !== me.id) return; // 내 Claude만 알림
-  if (kind === 'wait') { chime('wait'); notify('🙋 Claude가 승인을 기다려요', `${s.project} · ${s.detail || ''}`); }
-  if (kind === 'done') { chime('done'); notify('✅ 작업 완료', s.project); }
+  if (kind === 'wait') { chime('wait'); notify('🙋 Claude가 승인을 기다려요', `${s.project} · ${s.detail || ''}`, 'claude-wait-' + s.id, './#office'); }
+  if (kind === 'done') { chime('done'); notify('✅ 작업 완료', s.project, 'claude-done-' + s.id, './#office'); }
 }
 
 const STATE_KO = { read: '📚 자료 찾는 중', bash: '🖥 명령 실행 중', edit: '⌨️ 코드 작성 중', web: '📡 웹 조사 중',
@@ -507,7 +522,7 @@ function onNewMessage(c, x) {
   office.say(nameOf(x.from), x.text);     // 보낸 사람 캐릭터 머리 위 말풍선
   if (x.from === me.id || quiet()) return;
   chime('msg');
-  if (document.hidden || c.id !== active) notify(`💬 ${nameOf(x.from)}`, x.text, () => { showTab('together'); active = c.id; renderChat(); });
+  if (document.hidden || c.id !== active) notify(`💬 ${nameOf(x.from)}`, x.text, 'chat-' + c.id, './#together');
 }
 
 function unread(c) { const r = getRead(c.id); return c.msgs.filter(x => x.from !== me.id && x.at > r).length; }
@@ -566,7 +581,11 @@ $('compose').addEventListener('submit', e => {
   const text = $('input').value.trim();
   if (!text || !active) return;
   $('input').value = ''; autosize();
-  store.send(active, text).catch(err => { toast('보내지 못했어요: ' + (err.code || err.message)); $('input').value = text; });
+  const chatId = active, c = chats[chatId];
+  store.send(chatId, text).then(() => {
+    const ids = c && c.peer ? [c.peer.id] : MEMBERS.filter(m => m.id !== me.id).map(m => m.id);
+    pushTo(ids, 'chat', `💬 ${me.name}`, text, 'chat-' + chatId, './#together');
+  }).catch(err => { toast('보내지 못했어요: ' + (err.code || err.message)); $('input').value = text; });
 });
 $('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('compose').requestSubmit(); }
@@ -593,19 +612,72 @@ $('copyCmd').onclick = async () => {
 // ======================================================================
 //  알림 (소리 + 데스크톱 알림)
 // ======================================================================
-let notifyOn = false, audio = null, lastChime = 0;
+// notifyOn: 이 기기 알림 스위치 (소리 + 화면 알림 + 웹 푸시 구독). 상태는 ⋯ 메뉴와 🔔 알림 창에 "켜짐/꺼짐"으로 분명하게 보인다
+let notifyOn = false, audio = null, lastChime = 0, pushNow = 'off';
 try { notifyOn = localStorage.getItem('office-notify') === 'on'; } catch {}
-function renderNotifyBtn() { $('notify').setAttribute('aria-pressed', notifyOn); $('notify').textContent = notifyOn ? '🔔 알림 켜짐' : '🔕 알림 꺼짐'; }
-$('notify').onclick = async () => {
-  notifyOn = !notifyOn; renderNotifyBtn();
-  try { localStorage.setItem('office-notify', notifyOn ? 'on' : 'off'); } catch {}
-  if (notifyOn) {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    chime('done');
-    if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
-  }
+const PUSH_NOTE = {
+  on: '앱을 닫아도 이 기기로 알림이 와요.',
+  off: '이 기기로는 알림이 오지 않아요.',
+  blocked: '휴대폰(브라우저) 설정에서 이 앱의 알림이 차단돼 있어요. 설정 → 알림에서 허용한 뒤 다시 켜 주세요.',
+  install: '아이폰은 Safari 아래쪽 공유 버튼 → "홈 화면에 추가"를 한 뒤, 홈 화면의 Unframe Log 앱을 열어서 켜야 알림이 와요.',
+  unsupported: '이 브라우저는 앱을 닫았을 때의 알림을 지원하지 않아요. 페이지가 열려 있을 때만 소리·알림이 와요.',
 };
-renderNotifyBtn();
+async function refreshNotify() {
+  pushNow = await pushState().catch(() => 'unsupported');
+  // 스위치가 켜져 있는데 구독이 사라졌으면(앱 재설치 등) 꺼짐으로 보여준다
+  const on = notifyOn && (pushNow === 'on' || pushNow === 'unsupported' || pushNow === 'install');
+  $('notify').setAttribute('aria-checked', on);
+  $('notify').innerHTML = `${on ? '🔔' : '🔕'} 알림 <b class="pill ${on ? 'on' : 'off'}">${on ? '켜짐' : '꺼짐'}</b>`;
+  if (!$('notiDlg').open) return on;
+  $('notiSwitch').setAttribute('aria-checked', on);
+  $('notiState').className = 'noti-state ' + (on ? 'on' : 'off');
+  $('notiState').innerHTML = `<b>${on ? '켜짐' : '꺼짐'}</b><span>${esc(deviceName())} · ${esc(on && pushNow !== 'on' ? PUSH_NOTE[pushNow] : PUSH_NOTE[on ? 'on' : pushNow === 'off' ? 'off' : pushNow])}</span>`;
+  const kinds = savedKinds();
+  $('notiKinds').innerHTML = Object.entries(KIND_LABEL).map(([k, l]) => `<label class="noti-kind"><input type="checkbox" data-kind="${k}" ${kinds.includes(k) ? 'checked' : ''} ${on ? '' : 'disabled'}> ${l}</label>`).join('');
+  $('notiTest').disabled = !on;
+  return on;
+}
+async function setNotify(want) {
+  if (want) {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      const st = await pushState();
+      if (st === 'install') { notifyOn = true; toast('🔔 소리·화면 알림을 켰어요. 앱을 닫아도 받으려면 홈 화면에 추가해 주세요.'); }
+      else if (st === 'unsupported') { notifyOn = true; if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission(); }
+      else { await enablePush(store, me, savedKinds()); notifyOn = true; toast('🔔 알림을 켰어요. 앱을 닫아도 이 기기로 와요.'); }
+      chime('done');
+    } catch (e) { notifyOn = false; toast('알림을 켜지 못했어요: ' + e.message); }
+  } else {
+    notifyOn = false;
+    await disablePush(store, me).catch(() => {});
+    toast('🔕 이 기기 알림을 껐어요.');
+  }
+  try { localStorage.setItem('office-notify', notifyOn ? 'on' : 'off'); } catch {}
+  return refreshNotify();
+}
+$('notify').onclick = () => { $('tools').hidden = true; $('notiDlg').showModal(); refreshNotify(); };
+$('notiSwitch').onclick = () => setNotify($('notiSwitch').getAttribute('aria-checked') !== 'true');
+$('notiClose').onclick = () => $('notiDlg').close();
+$('notiKinds').addEventListener('change', e => {
+  const kinds = [...$('notiKinds').querySelectorAll('[data-kind]:checked')].map(x => x.dataset.kind);
+  updateKinds(store, me, kinds).then(() => toast('🔔 받을 알림을 바꿨어요')).catch(err => toast('저장하지 못했어요: ' + err.message));
+});
+$('notiTest').onclick = () => store.sendPush({ to: [me.id], kind: 'test', title: '🔔 Unframe Log 테스트', body: '알림이 잘 와요! 이 기기에서 받을 수 있어요.', tag: 'test', url: './#today' })
+  .then(r => toast(r.sent ? `🔔 테스트 알림을 보냈어요 (기기 ${r.sent}대)` : '보낼 기기가 없어요. 알림을 껐다 다시 켜 보세요.'))
+  .catch(e => toast('테스트 알림 실패: ' + e.message));
+refreshNotify();
+// 알림을 누르고 들어왔을 때: 해당 탭으로
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
+  if (e.data && e.data.type === 'open') { const h = new URL(e.data.url).hash.slice(1); if (h) showTab(h); }
+});
+/**
+ * 상대에게 푸시 보내기. 🎧 집중 중인 사람에게는 메시지·요청 알림을 보내지 않는다 (내 Claude 알림은 자기 기기라 상관없음)
+ */
+function pushTo(ids, kind, title, body, tag, url) {
+  const to = ids.filter(id => id && (kind.startsWith('claude') || !(presence[id] && presence[id].status === 'focus')));
+  if (!to.length || !store || !store.sendPush) return;
+  store.sendPush({ to, kind, title, body: String(body || '').slice(0, 240), tag, url }).catch(() => {});
+}
 function chime(kind) {
   if (!notifyOn || performance.now() - lastChime < 400) return;
   try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
@@ -618,9 +690,10 @@ function chime(kind) {
     o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + 0.2);
   }
 }
-function notify(title, body, onClick) {
-  if (!notifyOn || !('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
-  try { const n = new Notification(title, { body, tag: title }); n.onclick = () => { window.focus(); onClick && onClick(); n.close(); }; } catch {}
+// 열려 있는 페이지가 띄우는 알림. 푸시와 같은 tag를 쓰면 같은 알림이 두 번 뜨지 않고 하나로 합쳐진다
+function notify(title, body, tag, url) {
+  if (!notifyOn || !document.hidden) return;
+  localNotify(title, body, tag || title, url);
 }
 
 // ======================================================================
@@ -635,7 +708,7 @@ function startBoard() {
       const prev = new Map(boardItems.map(x => [x.id, x.assignee]));
       for (const x of items) if (x.assignee === me.id && prev.get(x.id) !== me.id && x.by !== me.id && !x.done) {
         toast(`📋 ${nameOf(x.by)}님이 할 일을 맡겼어요: ${x.text}`);
-        if (!quiet()) { chime('msg'); notify('📋 새로 맡은 일', x.text); }
+        if (!quiet()) { chime('msg'); notify('📋 새로 맡은 일', x.text, 'board-' + x.text.slice(0, 40), './#together'); }
       }
     }
     boardItems = items; boardLoaded = true; renderBoard();
@@ -704,7 +777,7 @@ $('boardForm').addEventListener('submit', e => {
   const text = $('boardInput').value.trim(); if (!text) return;
   const who = $('boardWho').value || null, due = $('boardDue').value || null;
   $('boardInput').value = ''; $('boardDue').value = '';
-  store.addBoard(text, who, due).catch(err => { toast('추가하지 못했어요 (' + (err.code || err.message) + ')'); $('boardInput').value = text; });
+  store.addBoard(text, who, due).then(() => { if (who && who !== me.id) pushTo([who], 'board', `📋 ${me.name}님이 할 일을 맡겼어요`, text, 'board-' + text.slice(0, 40), './#together'); }).catch(err => { toast('추가하지 못했어요 (' + (err.code || err.message) + ')'); $('boardInput').value = text; });
 });
 function focusBoard() {
   showTab('together');
@@ -725,11 +798,11 @@ function startRequests() {
     if (reqLoaded) for (const r of list) {
       if (r.to === me.id && r.status === 'open' && !prev.has(r.id)) {
         if (!quiet()) chime('wait');
-        if (!quiet()) notify(`🙋 ${nameOf(r.from)}님의 확인 요청`, r.text);
+        if (!quiet()) notify(`🙋 ${nameOf(r.from)}님의 확인 요청`, r.text, 'req-' + r.text.slice(0, 40), './#together');
         toast(`🙋 ${nameOf(r.from)}님이 확인을 요청했어요: ${r.text}`);
       }
       if (r.from === me.id && prev.get(r.id) === 'open' && (r.status === 'ok' || r.status === 'changes')) {
-        chime('done'); notify(`${REQ_STATUS[r.status]} · ${nameOf(r.to)}`, r.reply || r.text);
+        chime('done'); notify(`${REQ_STATUS[r.status]} · ${nameOf(r.to)}`, r.reply || r.text, 'reply-' + r.id, './#together');
         toast(`${nameOf(r.to)}님 답변: ${REQ_STATUS[r.status]}${r.reply ? ' · ' + r.reply : ''}`);
       }
     }
@@ -765,6 +838,7 @@ $('reqList').addEventListener('click', e => {
     const r = find(id); if (!r) return;
     const reply = ((document.querySelector(`[data-reply="${CSS.escape(id)}"]`) || {}).value || '').trim();
     store.replyRequest(r, status, reply)
+      .then(() => pushTo([r.from], 'request', `${REQ_STATUS[status]} · ${me.name}`, reply || r.text, 'reply-' + r.id, './#together'))
       .then(() => store.send(chatIdWith(r.from), `${REQ_STATUS[status]}${r.project ? ' · ' + r.project : ''}\n${reply || r.text}`))
       .catch(err => toast('답하지 못했어요 (' + (err.code || err.message) + ')'));
   };
@@ -796,6 +870,7 @@ $('reqForm').addEventListener('submit', e => {
   if (link && !/^https?:\/\//.test(link)) link = 'https://' + link;
   $('reqDlg').close();
   store.createRequest({ to, text, project, link })
+    .then(() => pushTo([to], 'request', `🙋 ${me.name}님의 확인 요청`, text, 'req-' + text.slice(0, 40), './#together'))
     .then(() => store.send(chatIdWith(to), `🙋 확인 요청${project ? ' · ' + project : ''}\n${text}${link ? '\n🔗 ' + link : ''}`))
     .then(() => toast(`${nameOf(to)}님께 확인을 요청했어요.`))
     .catch(err => toast('요청하지 못했어요 (' + (err.code || err.message) + ')'));
@@ -1214,7 +1289,8 @@ function startLog() {
   const logStore = store.logStore(), work = store.workStore();
   logUi = initLog({ store: logStore, me, members: MEMBERS, avatar, toast, toastAction, saveSeen, go: showTab });
   docsUi = initDocs({ work, logs: logUi, me, members: MEMBERS, toast, go: showTab, openTracker: logUi.openTracker });
-  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems });
+  calUi = initCalendar({ work, logs: logUi, logStore, me, members: MEMBERS, avatar, toast, docs: docsUi, go: showTab, getBoard: () => boardItems,
+    notifyOthers: (title, body, tag) => pushTo(MEMBERS.filter(m => m.id !== me.id).map(m => m.id), 'event', title, body, tag, './#calendar') });
   showTab(location.hash.slice(1) || 'today', { push: false });
 }
 

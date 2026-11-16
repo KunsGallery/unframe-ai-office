@@ -47,6 +47,12 @@ function main(input) {
     if (deleted) { try { fs.unlinkSync(file); } catch {} }
     else fs.writeFileSync(file, JSON.stringify(session));
     if (write) jobs.push(deleted ? { op: 'delete', coll: 'sessions', id: session.id } : { op: 'set', coll: 'sessions', id: session.id, data: session });
+    // 🔔 내 휴대폰으로 웹 푸시 (받을지 말지는 기기마다 앱의 🔔 알림 설정에서 고른다)
+    const proj = session && session.project ? session.project : path.basename(ev.cwd || '') || 'Claude';
+    if (ev.hook_event_name === 'Notification' && write && session.state === 'wait')
+      jobs.push({ op: 'push', data: { kind: 'claude-wait', title: '🙋 Claude가 승인을 기다려요', body: `${proj} · ${session.detail || '확인 필요'}`, tag: 'claude-wait-' + session.id, url: './#office' } });
+    if (ev.hook_event_name === 'Stop' && !ev.stop_hook_active)
+      jobs.push({ op: 'push', data: { kind: 'claude-done', title: '✅ 작업 완료', body: proj, tag: 'claude-done-' + session.id, url: './#office' } });
   });
   // 업무일지: 이 PC에 계속 쌓고, 작업 완료 때·10분마다만 올린다
   withLock('journal', () => {
@@ -106,6 +112,10 @@ async function send(jobFile) {
   const headers = { Authorization: 'Bearer ' + tok.token, 'Content-Type': 'application/json' };
   for (const job of jobs) {
     const url = `${base}/projects/${config.projectId}/databases/(default)/documents/${job.coll}/${encodeURIComponent(job.id)}`;
+    if (job.op === 'push') {
+      if (config.site) await fetch(config.site + '/.netlify/functions/push', { method: 'POST', headers, body: JSON.stringify({ ...job.data, to: [config.memberId] }) }).catch(() => {});
+      continue;
+    }
     if (job.op === 'delete') { await fetch(url, { method: 'DELETE', headers }); continue; }
     const data = { ...job.data, owner: config.memberId };
     // seq가 더 작은(늦게 도착한 옛날) 쓰기는 보안 규칙이 거절한다 → 순서가 뒤바뀌어도 최신 상태가 남는다

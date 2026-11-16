@@ -1,5 +1,5 @@
-// Claude Office 서비스 워커: 앱 설치용. 그림 파일만 캐시하고, 나머지는 항상 최신 버전을 받아온다.
-const CACHE = 'office-assets-v1';
+// Unframe Log 서비스 워커: 앱 설치 + 웹 푸시 알림. 그림 파일만 캐시하고, 나머지는 항상 최신 버전을 받아온다.
+const CACHE = 'office-assets-v2';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())
@@ -16,4 +16,24 @@ self.addEventListener('fetch', e => {
     if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
     return r;
   }).catch(() => caches.match(e.request)));
+});
+
+// 🔔 웹 푸시: 앱이 닫혀 있어도 알림을 띄운다 (Netlify 함수 push가 보냄)
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Unframe Log', {
+    body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag,
+    icon: 'icons/icon-192.png', data: { url: d.url || './' },
+  }));
+});
+// 알림을 누르면: 열린 앱이 있으면 그 창으로, 없으면 새로 연다
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const c = list.find(x => x.url.startsWith(self.registration.scope));
+    if (c) { c.postMessage({ type: 'open', url }); return c.focus(); }
+    return self.clients.openWindow(url);
+  }));
 });

@@ -39,6 +39,8 @@
 | `web/log/` | Unframe Log 화면 — 기록·성취(model·store·charts·ui·report), 문서(docs), 캘린더(calendar), 문서·일정 저장소(workstore), log.css |
 | `web/hook/` | 각자 PC에 설치되는 Claude Code 훅 |
 | `netlify/functions/summarize.mjs` | ✨ 업무일지 AI 요약 (Claude API, 멤버 로그인 확인 후 호출) |
+| `netlify/functions/push.mjs` | 🔔 웹 푸시 보내기 (멤버 확인 → 받는 사람의 `pushSubs` 기기로 전송, 끊긴 구독 정리) |
+| `web/push.js`, `web/push-config.js` | 이 기기 알림 켜기/끄기(구독), VAPID 공개 키 |
 | `scripts/build.js` | members.json → `web/members.js` + `firestore.rules` 생성 |
 
 ## 배포 구조
@@ -46,7 +48,10 @@
 - Firebase 프로젝트: `unframe-ai-office` (Firestore 서울, Google 로그인)
 
 ## 처음 한 번만 할 일
-1. **Netlify 환경변수**: Netlify → unframe-office → Site configuration → Environment variables → `ANTHROPIC_API_KEY` 추가 (✨AI 요약용, https://console.anthropic.com 에서 발급). 추가 후 Deploys → Trigger deploy.
+1. **Netlify 환경변수**: Netlify → unframe-office → Site configuration → Environment variables에
+   - `ANTHROPIC_API_KEY` (✨AI 요약용, https://console.anthropic.com 에서 발급)
+   - `VAPID_PRIVATE_KEY` (🔔 웹 푸시용 비밀 키. 짝인 공개 키는 `web/push-config.js`. 새로 만들려면 `npx web-push generate-vapid-keys` 후 둘 다 바꿈)
+   추가 후 Deploys → Trigger deploy.
 2. **Firebase 승인 도메인**: Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 Netlify 주소(`unframe-office.netlify.app` 등) 추가. 안 하면 로그인 팝업이 막혀요.
 3. **각자 PC 연결** (재우님, 소연님 각각): 사이트에 로그인 → 오른쪽 위 **🔌 내 PC 연결** → 명령 복사 → 터미널에 붙여넣기. 새로 여는 Claude Code 세션부터 사무실에 출근해요. (연결 해제: `node ~/.claude-office/install.js --uninstall`)
 
@@ -108,6 +113,8 @@ Firebase 무료(Spark) 요금제로 충분하도록 줄여 두었습니다: 도�
 대략 사람당 하루 도구 호출 수천 번 수준이면 무료 한도(쓰기 2만/일, 읽기 5만/일) 안이에요. 넘으면 그날만 갱신이 멈추고 다음 날 풀립니다.
 
 기록은 한 번 누를 때 쓰기 1번(하루 한 문서에 합산)이라 하루 수십 번 수준이면 한도와 거리가 멀어요.
+
+🔔 알림은 Firebase 유료 기능(Cloud Functions/FCM 서버) 없이 Netlify 함수 + 표준 웹 푸시로 보내서 무료 요금제 그대로예요.
 
 AI 요약은 누를 때만 Claude API를 1번 호출해요 (Claude Opus 5.5, 빠른 설정). 한 번에 대략 수십 원 정도예요.
 
