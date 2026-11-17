@@ -41,7 +41,7 @@ export function initLog(ctx) {
   //  오늘
   // ==================================================================
   function renderToday() {
-    const el = $('paneToday'), list = mine(), today = dayKey();
+    const el = $('todayContent'), list = mine(), today = dayKey();
     const stats = list.map(S), met = stats.filter(s => s.todayMet).length;
     const top = Math.max(0, ...stats.map(s => s.streak));
     if (!list.length) { el.innerHTML = '<div id="lgPetSlot"></div>' + emptyToday(); ctx.afterToday && ctx.afterToday(); return; }
@@ -157,7 +157,7 @@ export function initLog(ctx) {
     toast('↶ 되돌렸어요');
   }
 
-  $('paneToday').addEventListener('click', e => {
+  $('todayContent').addEventListener('click', e => {
     const tpl = e.target.closest('[data-tpl]');
     if (tpl) { openTrackerDialog(null, TEMPLATES[+tpl.dataset.tpl]); return; }
     const b = e.target.closest('[data-add], [data-act]'); if (!b) return;
@@ -174,7 +174,7 @@ export function initLog(ctx) {
       f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus();
     }
   });
-  $('paneToday').addEventListener('submit', e => {
+  $('todayContent').addEventListener('submit', e => {
     e.preventDefault();
     const c = e.target.closest('[data-id]'), t = c && trackers.find(x => x.id === c.dataset.id); if (!t) return;
     const v = e.target.querySelector('input').value;

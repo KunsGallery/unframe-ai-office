@@ -91,6 +91,11 @@
   .day { align-self: center; font-size: 11px; color: var(--muted); margin: 6px 0; }
   .compose { display: flex; gap: 6px; margin-top: 8px; }
   .compose textarea { flex: 1; resize: none; background: #1b1724; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; min-height: 38px; max-height: 120px; }
+  #todayChat { padding: 20px 20px 0; }
+  #chatCard { min-width: 0; }
+  .compose textarea { min-width: 0; }
+  @media (max-width: 1000px) { #togetherChat { order: -1; } }
+  @media (max-width: 600px) { .compose textarea { font-size: 16px; } }
   .compose textarea:focus { outline: none; border-color: var(--accent); }
 
   /* 로그인 화면 */
@@ -383,7 +388,7 @@
     <button class="btn" id="signout">로그아웃</button>
   </span>
 </header>
-<section class="pane lgpane" id="paneToday" aria-label="오늘"></section>
+<section class="pane lgpane" id="paneToday" aria-label="오늘"><div id="todayChat"></div><div id="todayContent"></div></section>
 <section class="pane lgpane wide" id="paneCalendar" aria-label="캘린더" hidden></section>
 <section class="pane lgpane" id="paneDocs" aria-label="문서" hidden></section>
 <section class="pane lgpane" id="paneLog" aria-label="내 기록" hidden></section>
@@ -410,8 +415,8 @@
       </section>
     </div>
   </div>
-  <aside>
-    <div class="card">
+  <aside id="togetherChat">
+    <div class="card" id="chatCard">
       <h2>💬 메시지</h2>
       <div class="tabs" id="tabs" role="tablist"></div>
       <div class="peer" id="peer"></div>

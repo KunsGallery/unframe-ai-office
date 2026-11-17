@@ -586,14 +586,14 @@ function startChat() {
 function onNewMessage(c, x) {
   office.say(nameOf(x.from), x.text);     // 보낸 사람 캐릭터 머리 위 말풍선
   if (x.from === me.id) return;
-  const looking = !document.hidden && c.id === active && currentTab === 'together';
+  const looking = !document.hidden && c.id === active && (currentTab === 'together' || currentTab === 'today');
   if (!quiet()) chime('msg');
   if (!looking) notify(`💬 ${nameOf(x.from)}`, x.text, 'chat-' + c.id, './#together', quiet());
 }
 
 function unread(c) { const r = getRead(c.id); return c.msgs.filter(x => x.from !== me.id && x.at > r).length; }
 function markRead() {
-  const c = chats[active]; if (!c || document.hidden || currentTab !== 'together' || !c.msgs.length) return;
+  const c = chats[active]; if (!c || document.hidden || !['today', 'together'].includes(currentTab) || !c.msgs.length) return;
   setRead(c.id, Math.max(getRead(c.id), c.msgs[c.msgs.length - 1].at));
 }
 
@@ -628,7 +628,7 @@ function renderChat() {
         <span class="time">${hhmm(x.at)}</span>
       </div></li>`;
   }).join('') : `<li class="day">${c.peer ? esc(c.peer.name) + '님과의 첫 메시지를 보내보세요' : '첫 메시지를 보내보세요'}</li>`;
-  if (nearBottom || c._scrolledOnce !== true) { box.scrollTop = box.scrollHeight; c._scrolledOnce = true; }
+  if (box.clientHeight && (nearBottom || c._scrolledOnce !== true)) { box.scrollTop = box.scrollHeight; c._scrolledOnce = true; }
 }
 function renderPeer() {
   const c = chats[active];
@@ -1378,7 +1378,11 @@ function showTab(tab, { push = true } = {}) {
   document.body.classList.toggle('lg-on', !['together', 'office'].includes(tab));
   if (push && location.hash !== '#' + tab) history.replaceState(null, '', location.pathname + location.search + '#' + tab);
   if (tab === 'office') window.dispatchEvent(new Event('resize'));   // 숨어 있던 캔버스 크기 다시 재기
-  if (tab === 'together' && me) { markRead(); renderChat(); }
+  if ((tab === 'today' || tab === 'together') && me) {
+    $(tab === 'today' ? 'todayChat' : 'togetherChat').appendChild($('chatCard'));
+    if (chats[active]) chats[active]._scrolledOnce = false;
+    renderChat();
+  }
   if (logUi) logUi.show(tab);
   if (docsUi) docsUi.show(tab);
   if (calUi) calUi.show(tab);
